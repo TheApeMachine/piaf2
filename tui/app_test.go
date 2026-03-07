@@ -15,17 +15,17 @@ func TestNewApp(t *testing.T) {
 				convey.So(app, convey.ShouldNotBeNil)
 			})
 
-			convey.Convey("It should have nil renderer", func() {
-				convey.So(app.renderer, convey.ShouldBeNil)
+			convey.Convey("It should have a non-nil editor", func() {
+				convey.So(app.editor, convey.ShouldNotBeNil)
 			})
 		})
 
-		convey.Convey("When called with AppWithRenderer", func() {
-			renderer := NewRenderer()
-			app := NewApp(AppWithRenderer(renderer))
+		convey.Convey("When called with AppWithEditor", func() {
+			editor := NewEditor()
+			app := NewApp(AppWithEditor(editor))
 
-			convey.Convey("It should set the renderer", func() {
-				convey.So(app.renderer, convey.ShouldEqual, renderer)
+			convey.Convey("It should set the editor", func() {
+				convey.So(app.editor, convey.ShouldEqual, editor)
 			})
 		})
 	})
@@ -36,11 +36,11 @@ func TestAppRead(t *testing.T) {
 		app := NewApp()
 
 		convey.Convey("When Read is called", func() {
-			buf := make([]byte, 8)
+			buf := make([]byte, 4096)
 			number, err := app.Read(buf)
 
-			convey.Convey("It should return 0 and nil", func() {
-				convey.So(number, convey.ShouldEqual, 0)
+			convey.Convey("It should return rendered ANSI bytes and nil error", func() {
+				convey.So(number, convey.ShouldBeGreaterThan, 0)
 				convey.So(err, convey.ShouldBeNil)
 			})
 		})
@@ -81,6 +81,7 @@ func BenchmarkAppRead(b *testing.B) {
 	buf := make([]byte, 4096)
 
 	for b.Loop() {
+		app.editor.readOff = 0
 		_, _ = app.Read(buf)
 	}
 }
@@ -93,3 +94,4 @@ func BenchmarkAppWrite(b *testing.B) {
 		_, _ = app.Write(data)
 	}
 }
+

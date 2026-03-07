@@ -2,55 +2,62 @@ package tui
 
 /*
 App is the main application struct.
+It wires together the Editor and exposes a simple io.ReadWriteCloser
+interface for the command layer to drive.
 */
 type App struct {
-	renderer *Renderer
+	editor *Editor
 }
 
 /*
-opts configures App with options.
+appOpts configures App with options.
 */
 type appOpts func(*App)
 
 /*
-NewApp creates a new App instance.
+NewApp creates a new App instance with a default Editor.
 */
 func NewApp(opts ...appOpts) *App {
-	a := &App{}
-
-	for _, opt := range opts {
-		opt(a)
+	app := &App{
+		editor: NewEditor(),
 	}
 
-	return a
+	for _, opt := range opts {
+		opt(app)
+	}
+
+	return app
 }
 
 /*
 Read implements the io.Reader interface.
+Returns rendered ANSI output from the current editor state.
 */
-func (a *App) Read(p []byte) (n int, err error) {
-	return 0, nil
+func (app *App) Read(p []byte) (n int, err error) {
+	return app.editor.Read(p)
 }
 
 /*
 Write implements the io.Writer interface.
+Routes input bytes to the editor for processing.
 */
-func (a *App) Write(p []byte) (n int, err error) {
-	return len(p), nil
+func (app *App) Write(p []byte) (n int, err error) {
+	return app.editor.Write(p)
 }
 
 /*
 Close implements the io.Closer interface.
+Closes the editor and restores the terminal.
 */
-func (a *App) Close() error {
-	return nil
+func (app *App) Close() error {
+	return app.editor.Close()
 }
 
 /*
-WithRenderer configures App with a Renderer.
+AppWithEditor configures App with a custom Editor.
 */
-func AppWithRenderer(renderer *Renderer) appOpts {
+func AppWithEditor(editor *Editor) appOpts {
 	return func(app *App) {
-		app.renderer = renderer
+		app.editor = editor
 	}
 }

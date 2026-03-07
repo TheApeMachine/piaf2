@@ -11,6 +11,7 @@ const (
 	ansiCursorPos      = "\033[%d;%dH"
 	ansiShowCursor     = "\033[?25h"
 	ansiHideCursor     = "\033[?25l"
+	ansiClearLine      = "\033[2K"
 )
 
 /*
@@ -68,9 +69,22 @@ func (renderer *Renderer) Write(p []byte) (n int, err error) {
 
 	renderer.output = append(renderer.output, ansiClearHome...)
 
-	for _, line := range frame.Lines {
+	maxLines := int(frame.Height) - 1
+
+	for index, line := range frame.Lines {
+		if index >= maxLines {
+			break
+		}
+
 		renderer.output = append(renderer.output, line...)
 		renderer.output = append(renderer.output, '\r', '\n')
+	}
+
+	renderer.output = append(renderer.output, fmt.Sprintf(ansiCursorPos, int(frame.Height), 1)...)
+	renderer.output = append(renderer.output, ansiClearLine...)
+
+	if frame.Mode != "" {
+		renderer.output = append(renderer.output, "-- "+frame.Mode+" --"...)
 	}
 
 	row := int(frame.CursorRow) + 1

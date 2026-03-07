@@ -16,12 +16,25 @@ var rootCmd = &cobra.Command{
 	Short: "Piaf is an A.I. powered code editor.",
 	Long:  rootLong,
 	Run: func(cmd *cobra.Command, args []string) {
-		app := tui.NewApp(tui.AppWithRenderer(tui.NewRenderer()))
+		app := tui.NewApp()
+		defer app.Close()
 
-		io.Copy(app, os.Stdin)
+		buf := make([]byte, 256)
+
 		io.Copy(os.Stdout, app)
 
-		app.Close()
+		for {
+			count, readErr := os.Stdin.Read(buf)
+
+			if count > 0 {
+				app.Write(buf[:count])
+				io.Copy(os.Stdout, app)
+			}
+
+			if readErr != nil {
+				break
+			}
+		}
 	},
 }
 
