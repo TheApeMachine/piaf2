@@ -11,8 +11,7 @@ import (
 
 /*
 App wires Keyboard → Editor → Renderer and exposes io.ReadWriteCloser.
-Write receives raw terminal bytes or SentinelRefresh; Read yields ANSI output.
-When a Frame has Quit, Read returns EOF after the final output.
+Write receives raw bytes (stdin or SentinelRefresh); Read yields ANSI output.
 */
 type App struct {
 	keyboard   *keyboard.Keyboard
@@ -44,7 +43,7 @@ func NewApp(opts ...appOpts) *App {
 		opt(app)
 	}
 
-	app.pump(streamCh)
+	app.pump()
 
 	return app
 }
@@ -89,20 +88,15 @@ func (app *App) Read(p []byte) (n int, err error) {
 
 /*
 Write implements the io.Writer interface.
-Routes raw bytes to Keyboard, or treats SentinelRefresh as a refresh-only pump.
+Routes raw bytes to Keyboard; 0xFE (SentinelRefresh) yields KeyRefresh event.
 */
 func (app *App) Write(p []byte) (n int, err error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
 
-	if len(p) == 1 && p[0] == SentinelRefresh {
-		app.pumpRefresh()
-		return 1, nil
-	}
-
 	app.keyboard.Write(p)
-	app.pump(nil)
+	app.pump()
 
 	return len(p), nil
 }
@@ -115,10 +109,8 @@ func (app *App) Close() error {
 	return app.renderer.Close()
 }
 
-func (app *App) pump(refresh chan struct{}) {
-	if refresh != nil {
-		io.Copy(app.editor, app.keyboard)
-	}
+func (app *App) pump() {
+	io.Copy(app.editor, app.keyboard)
 
 	frameBytes, err := io.ReadAll(app.editor)
 	if err != nil || len(frameBytes) == 0 {
@@ -138,8 +130,4 @@ func (app *App) pump(refresh chan struct{}) {
 	io.Copy(buf, app.renderer)
 	app.output = append(app.output[:0], buf.Bytes()...)
 	app.readOff = 0
-}
-
-func (app *App) pumpRefresh() {
-	app.pump(nil)
 }

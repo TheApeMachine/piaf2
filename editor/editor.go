@@ -196,6 +196,8 @@ func (ed *Editor) handleKey(key event.Key) {
 		} else if ed.mode == modeCommand && len(ed.commandLine) > 0 {
 			ed.commandLine = ed.commandLine[:len(ed.commandLine)-1]
 		}
+	case event.KeyRefresh:
+		ed.render()
 	case event.KeyEnter:
 		if ed.mode == modeCommand {
 			ed.executeCommand()
@@ -384,6 +386,50 @@ func (ed *Editor) executeCommand() {
 	}
 }
 
+func wrapChatLines(raw []string, width int) []string {
+	if width <= 0 {
+		return raw
+	}
+
+	out := make([]string, 0)
+
+	for _, entry := range raw {
+		for _, segment := range strings.Split(entry, "\n") {
+			runes := []rune(strings.TrimRight(segment, " \t"))
+			for len(runes) > 0 {
+				if len(runes) <= width {
+					out = append(out, string(runes))
+					break
+				}
+
+				breakAt := width
+				for index := width - 1; index >= 0; index-- {
+					if index < len(runes) && (runes[index] == ' ' || runes[index] == '\t') {
+						breakAt = index + 1
+						break
+					}
+				}
+
+				out = append(out, string(runes[:breakAt]))
+				runes = runes[breakAt:]
+				runes = trimLeftSpaces(runes)
+			}
+		}
+	}
+
+	return out
+}
+
+func trimLeftSpaces(runes []rune) []rune {
+	for index, r := range runes {
+		if r != ' ' && r != '\t' {
+			return runes[index:]
+		}
+	}
+
+	return nil
+}
+
 func (ed *Editor) render() {
 	cmdLine := ""
 	cursorRow := ed.buffer.cursorRow
@@ -391,7 +437,8 @@ func (ed *Editor) render() {
 	lines := ed.buffer.StringLines()
 
 	if ed.inChat && ed.chat != nil {
-		lines = ed.chat.Lines()
+		raw := ed.chat.Lines()
+		lines = wrapChatLines(raw, ed.buffer.width)
 		maxLines := ed.buffer.height - 1
 		if maxLines > 0 && len(lines) > maxLines {
 			lines = lines[len(lines)-maxLines:]
@@ -463,7 +510,6 @@ func (ed *Editor) openChat(mode string) {
 }
 
 func (ed *Editor) onStreamUpdate() {
-	ed.render()
 	if ed.streamUpdates != nil {
 		select {
 		case ed.streamUpdates <- struct{}{}:

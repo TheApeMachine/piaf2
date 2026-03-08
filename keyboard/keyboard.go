@@ -84,6 +84,11 @@ func (keyboard *Keyboard) Close() error {
 }
 
 func (keyboard *Keyboard) processByte(b byte) {
+	if b == 0xFE {
+		keyboard.output = event.EncodeSpecial(keyboard.output, event.KeyRefresh)
+		return
+	}
+
 	switch keyboard.state {
 	case stateNormal:
 		keyboard.handleNormal(b)

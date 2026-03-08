@@ -35,7 +35,7 @@ func NewGeminiProvider() *GeminiProvider {
 
 	model := os.Getenv("GEMINI_MODEL")
 	if model == "" {
-		model = "gemini-3.1-pro-preview"
+		model = "gemini-1.5-flash"
 	}
 
 	return &GeminiProvider{
@@ -52,7 +52,7 @@ func NewGeminiProvider() *GeminiProvider {
 Name returns the provider display name.
 */
 func (provider *GeminiProvider) Name() string {
-	return "Gemini Pro 3.1"
+	return "Gemini"
 }
 
 /*
@@ -176,7 +176,7 @@ func (provider *GeminiProvider) GenerateStream(ctx context.Context, request *Req
 		return "", err
 	}
 
-	endpoint := provider.baseURL + "/models/" + provider.model + ":streamGenerateContent?key=" + url.QueryEscape(provider.apiKey)
+	endpoint := provider.baseURL + "/models/" + provider.model + ":streamGenerateContent?alt=sse&key=" + url.QueryEscape(provider.apiKey)
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return "", err
@@ -205,6 +205,15 @@ func (provider *GeminiProvider) GenerateStream(ctx context.Context, request *Req
 			continue
 		}
 
+		jsonBytes := []byte(line)
+		if strings.HasPrefix(line, "data:") {
+			jsonBytes = []byte(strings.TrimSpace(line[5:]))
+		}
+
+		if len(jsonBytes) == 0 || string(jsonBytes) == "[DONE]" {
+			continue
+		}
+
 		var decoded struct {
 			Candidates []struct {
 				Content struct {
@@ -215,7 +224,7 @@ func (provider *GeminiProvider) GenerateStream(ctx context.Context, request *Req
 			} `json:"candidates"`
 		}
 
-		if err := json.Unmarshal([]byte(line), &decoded); err != nil {
+		if parseErr := json.Unmarshal(jsonBytes, &decoded); parseErr != nil {
 			continue
 		}
 
@@ -232,9 +241,14 @@ func (provider *GeminiProvider) GenerateStream(ctx context.Context, request *Req
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return full.String(), err
+	if scanErr := scanner.Err(); scanErr != nil {
+		return full.String(), scanErr
 	}
 
-	return strings.TrimSpace(full.String()), nil
+	result := strings.TrimSpace(full.String())
+	if result == "" {
+		return "", fmt.Errorf("%s returned no content", provider.Name())
+	}
+
+	return result, nil
 }
