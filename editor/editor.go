@@ -19,6 +19,8 @@ const (
 
 const jumpAlphabet = "asdfghjklqwertyuiopzxcvbnm"
 
+var jumpAlphabetLookup = newJumpAlphabetLookup()
+
 /*
 Editor consumes event wire format and emits Frame wire format.
 Implements io.ReadWriteCloser: Write receives events, Read yields Frame bytes.
@@ -226,13 +228,14 @@ func (ed *Editor) handleRune(r rune) {
 	case modeCommand:
 		ed.commandLine = append(ed.commandLine, r)
 	default:
-		if ed.handleJumpRune(r) {
-		} else if ed.inExplorer {
-			ed.applyExplorerCommand(r)
-		} else if ed.inChat {
-			ed.applyChatCommand(r)
-		} else {
-			ed.applyNormalCommand(r)
+		if !ed.handleJumpRune(r) {
+			if ed.inExplorer {
+				ed.applyExplorerCommand(r)
+			} else if ed.inChat {
+				ed.applyChatCommand(r)
+			} else {
+				ed.applyNormalCommand(r)
+			}
 		}
 	}
 
@@ -439,22 +442,35 @@ func (ed *Editor) openChat(mode string) {
 	ed.chat.SetMode(mode)
 }
 
+/*
+jumpTarget represents a single navigable position in jump mode.
+It holds the row and column coordinates and the associated label code.
+*/
 type jumpTarget struct {
 	row  int
 	col  int
 	code string
 }
 
+/*
+jumpActive returns true if jump mode is currently active.
+*/
 func (ed *Editor) jumpActive() bool {
 	return len(ed.jumpTargets) > 0
 }
 
+/*
+clearJump exits jump mode by resetting all jump state.
+*/
 func (ed *Editor) clearJump() {
 	ed.jumpPrefix = ""
 	ed.jumpTargets = nil
 	ed.jumpCodeLen = 0
 }
 
+/*
+startJump initiates jump mode by discovering visible targets and assigning label codes.
+*/
 func (ed *Editor) startJump() {
 	targets := ed.visibleJumpTargets()
 
@@ -473,12 +489,16 @@ func (ed *Editor) startJump() {
 	ed.jumpCodeLen = codeLen
 }
 
+/*
+handleJumpRune processes a rune during jump mode.
+It returns true if the rune was consumed by jump mode.
+*/
 func (ed *Editor) handleJumpRune(r rune) bool {
 	if !ed.jumpActive() {
 		return false
 	}
 
-	if !strings.ContainsRune(jumpAlphabet, r) {
+	if r >= 256 || !jumpAlphabetLookup[byte(r)] {
 		ed.clearJump()
 
 		return true
@@ -507,6 +527,9 @@ func (ed *Editor) handleJumpRune(r rune) bool {
 	return true
 }
 
+/*
+visibleJumpTargets collects all navigable positions in the visible buffer area.
+*/
 func (ed *Editor) visibleJumpTargets() []jumpTarget {
 	lines := ed.buffer.lines
 	maxRows := ed.buffer.height - 1
@@ -538,6 +561,9 @@ func (ed *Editor) visibleJumpTargets() []jumpTarget {
 	return targets
 }
 
+/*
+filteredJumpTargets returns targets matching the current jump prefix.
+*/
 func (ed *Editor) filteredJumpTargets() []jumpTarget {
 	if !ed.jumpActive() {
 		return nil
@@ -558,27 +584,33 @@ func (ed *Editor) filteredJumpTargets() []jumpTarget {
 	return targets
 }
 
+/*
+jumpLines overlays jump label characters onto the visible lines.
+*/
 func (ed *Editor) jumpLines(lines []string) []string {
-	jumpLines := append([]string(nil), lines...)
+	overlaidLines := append([]string(nil), lines...)
 
 	for _, target := range ed.filteredJumpTargets() {
-		if target.row >= len(jumpLines) {
+		if target.row >= len(overlaidLines) {
 			continue
 		}
 
-		line := []rune(jumpLines[target.row])
+		line := []rune(overlaidLines[target.row])
 
 		if target.col >= len(line) || len(target.code) <= len(ed.jumpPrefix) {
 			continue
 		}
 
 		line[target.col] = rune(target.code[len(ed.jumpPrefix)])
-		jumpLines[target.row] = string(line)
+		overlaidLines[target.row] = string(line)
 	}
 
-	return jumpLines
+	return overlaidLines
 }
 
+/*
+jumpCodeLength calculates the minimum label length needed to encode count targets.
+*/
 func jumpCodeLength(count int) int {
 	codeLen := 1
 	capacity := len(jumpAlphabet)
@@ -591,6 +623,9 @@ func jumpCodeLength(count int) int {
 	return codeLen
 }
 
+/*
+jumpCode generates a base-N label for the given index with the specified length.
+*/
 func jumpCode(index, codeLen int) string {
 	code := make([]byte, codeLen)
 
@@ -600,6 +635,16 @@ func jumpCode(index, codeLen int) string {
 	}
 
 	return string(code)
+}
+
+func newJumpAlphabetLookup() [256]bool {
+	lookup := [256]bool{}
+
+	for _, r := range jumpAlphabet {
+		lookup[byte(r)] = true
+	}
+
+	return lookup
 }
 
 func (ed *Editor) workspaceRoot() string {

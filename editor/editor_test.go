@@ -19,6 +19,10 @@ func encodeSpecial(key event.Key) []byte {
 	return event.EncodeSpecial(nil, key)
 }
 
+/*
+decodeFrame reads and deserializes a wire.Frame from the Editor's output.
+It returns nil if reading or decoding fails.
+*/
 func decodeFrame(ed *Editor) *wire.Frame {
 	data, err := io.ReadAll(ed)
 
