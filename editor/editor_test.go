@@ -2,6 +2,7 @@ package editor
 
 import (
 	"io"
+	"math/rand"
 	"strings"
 	"testing"
 
@@ -304,6 +305,14 @@ func TestEditorCommandMode(t *testing.T) {
 func TestEditorChatFlow(t *testing.T) {
 	convey.Convey("Given an Editor in the chat window", t, func() {
 		ed := NewEditor(EditorWithSize(80, 12))
+		ed.chat = NewChat(
+			ChatWithRandom(rand.New(rand.NewSource(7))),
+			ChatWithProviders(
+				&stubProvider{name: "OpenAI GPT-5.4", responses: []string{"first response"}},
+				&stubProvider{name: "Claude Open 4.6", responses: []string{"second response"}},
+				&stubProvider{name: "Gemini Pro 3.1", responses: []string{"third response"}},
+			),
+		)
 		ed.openChat("CHAT")
 
 		convey.Convey("When a message is submitted", func() {
@@ -318,7 +327,7 @@ func TestEditorChatFlow(t *testing.T) {
 				convey.So(ed.mode, convey.ShouldEqual, modeNormal)
 				convey.So(transcript, convey.ShouldContainSubstring, "You: browse .")
 				convey.So(transcript, convey.ShouldContainSubstring, "Pipeline:")
-				convey.So(transcript, convey.ShouldContainSubstring, "Tool browse .")
+				convey.So(transcript, convey.ShouldContainSubstring, "first response")
 			})
 		})
 
@@ -338,6 +347,14 @@ func TestEditorChatFlow(t *testing.T) {
 func TestEditorImplementAccept(t *testing.T) {
 	convey.Convey("Given an Editor in implementation mode", t, func() {
 		ed := NewEditor(EditorWithSize(80, 12))
+		ed.chat = NewChat(
+			ChatWithRandom(rand.New(rand.NewSource(11))),
+			ChatWithProviders(
+				&stubProvider{name: "OpenAI GPT-5.4", responses: []string{"scoped the request"}},
+				&stubProvider{name: "Claude Open 4.6", responses: []string{"prepared the diff"}},
+				&stubProvider{name: "Gemini Pro 3.1", responses: []string{"final implementation summary"}},
+			),
+		)
 		ed.openChat("IMPLEMENT")
 
 		convey.Convey("When a prompt is submitted and accepted", func() {

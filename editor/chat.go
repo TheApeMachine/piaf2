@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/theapemachine/piaf/provider"
 )
 
 /*
@@ -15,10 +18,12 @@ Chat renders the multi-model discussion and implementation transcript.
 It keeps a running context and can inspect files inside the workspace.
 */
 type Chat struct {
-	root    string
-	mode    string
-	history []string
-	random  *rand.Rand
+	root      string
+	mode      string
+	history   []string
+	random    *rand.Rand
+	timeout   time.Duration
+	providers []provider.Provider
 }
 
 /*
@@ -36,9 +41,15 @@ func NewChat(opts ...chatOpts) *Chat {
 	}
 
 	chat := &Chat{
-		root:   root,
-		mode:   "CHAT",
-		random: rand.New(rand.NewSource(time.Now().UnixNano())),
+		root:    root,
+		mode:    "CHAT",
+		random:  rand.New(rand.NewSource(time.Now().UnixNano())),
+		timeout: 30 * time.Second,
+		providers: []provider.Provider{
+			provider.NewOpenAIProvider(),
+			provider.NewClaudeProvider(),
+			provider.NewGeminiProvider(),
+		},
 	}
 
 	for _, opt := range opts {
@@ -74,6 +85,19 @@ func ChatWithRandom(random *rand.Rand) chatOpts {
 		if random != nil {
 			chat.random = random
 		}
+	}
+}
+
+/*
+ChatWithProviders configures Chat with provider implementations.
+*/
+func ChatWithProviders(providers ...provider.Provider) chatOpts {
+	return func(chat *Chat) {
+		if len(providers) == 0 {
+			return
+		}
+
+		chat.providers = append([]provider.Provider(nil), providers...)
 	}
 }
 
@@ -118,17 +142,40 @@ func (chat *Chat) Submit(message string) {
 	toolOutput := chat.toolOutput(message)
 
 	chat.history = append(chat.history, "You: "+message)
-	chat.history = append(chat.history, "Pipeline: "+strings.Join(order, " -> "))
+	names := make([]string, 0, len(order))
+	for _, current := range order {
+		names = append(names, current.Name())
+	}
 
-	firstResponse := chat.composeResponse(order[0], message, "", toolOutput, 0)
-	secondResponse := chat.composeResponse(order[1], message, firstResponse, toolOutput, 1)
-	thirdResponse := chat.composeResponse(order[2], message, secondResponse, toolOutput, 2)
+	chat.history = append(chat.history, "Pipeline: "+strings.Join(names, " -> "))
 
-	chat.history = append(chat.history,
-		order[0]+": "+firstResponse,
-		order[1]+": "+secondResponse,
-		order[2]+": "+thirdResponse,
-	)
+	transcript := append([]string(nil), chat.history...)
+	responses := make([]string, 0, len(order))
+
+	for index, current := range order {
+		ctx, cancel := context.WithTimeout(context.Background(), chat.timeout)
+		response, err := current.Generate(ctx, &provider.Request{
+			Mode:          chat.mode,
+			Message:       message,
+			ToolOutput:    toolOutput,
+			Transcript:    transcript,
+			PriorResponse: responses,
+		})
+		cancel()
+
+		if err != nil {
+			response = "Provider error: " + err.Error()
+		}
+
+		if chat.mode == "IMPLEMENT" && index == len(order)-1 && !strings.Contains(strings.ToLower(response), "accept") {
+			response += "\nAccept with :accept or :reject."
+		}
+
+		line := current.Name() + ": " + response
+		chat.history = append(chat.history, line)
+		transcript = append(transcript, line)
+		responses = append(responses, line)
+	}
 }
 
 /*
@@ -168,52 +215,14 @@ func (chat *Chat) Lines() []string {
 	}
 }
 
-func (chat *Chat) randomizedModels() []string {
-	models := []string{
-		"OpenAI GPT-5.4",
-		"Claude Open 4.6",
-		"Gemini Pro 3.1",
-	}
+func (chat *Chat) randomizedModels() []provider.Provider {
+	models := append([]provider.Provider(nil), chat.providers...)
 
 	chat.random.Shuffle(len(models), func(left, right int) {
 		models[left], models[right] = models[right], models[left]
 	})
 
 	return models
-}
-
-func (chat *Chat) composeResponse(model, message, previous, toolOutput string, stage int) string {
-	if chat.mode == "IMPLEMENT" {
-		switch stage {
-		case 0:
-			return "I scoped the implementation request and identified the main edit surface."
-		case 1:
-			if toolOutput != "" {
-				return "Proposed diff plan:\n+ use the inspected files as the edit targets\n+ keep the change minimal\n" + toolOutput
-			}
-
-			return "Proposed diff plan:\n+ update the relevant editor flow\n+ keep the change minimal"
-		default:
-			return "Final implementation summary: " + previous + "\nAccept with :accept or :reject."
-		}
-	}
-
-	if toolOutput != "" {
-		switch stage {
-		case 0:
-			return "I inspected the workspace before answering.\n" + toolOutput
-		case 1:
-			return "Building on the previous answer, the relevant evidence is:\n" + toolOutput
-		default:
-			return "Final response: considering `" + message + "` and the earlier context, " + strings.ToLower(model) + " recommends continuing with the inspected evidence."
-		}
-	}
-
-	if previous != "" {
-		return "I considered the earlier response and kept the running context in view."
-	}
-
-	return "I considered the prompt and prepared the next stage of the discussion."
 }
 
 func (chat *Chat) toolOutput(message string) string {
