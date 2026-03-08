@@ -8,6 +8,7 @@ import (
 
 	"github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/piaf/event"
+	"github.com/theapemachine/piaf/wire"
 )
 
 func encodeRune(r rune) []byte {
@@ -16,6 +17,21 @@ func encodeRune(r rune) []byte {
 
 func encodeSpecial(key event.Key) []byte {
 	return event.EncodeSpecial(nil, key)
+}
+
+func decodeFrame(ed *Editor) *wire.Frame {
+	data, err := io.ReadAll(ed)
+
+	if err != nil {
+		return nil
+	}
+
+	frame := &wire.Frame{}
+	if _, err := frame.Write(data); err != nil {
+		return nil
+	}
+
+	return frame
 }
 
 func TestNewEditor(t *testing.T) {
@@ -139,6 +155,81 @@ func TestEditorNormalModeMotions(t *testing.T) {
 
 			convey.Convey("It should move to line end", func() {
 				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, len(ed.buffer.lines[0]))
+			})
+		})
+	})
+}
+
+func TestEditorJumpMode(t *testing.T) {
+	convey.Convey("Given an Editor with visible content", t, func() {
+		ed := NewEditor(EditorWithSize(80, 8))
+		ed.Write(encodeRune('i'))
+		for _, r := range "alpha beta" {
+			ed.Write(encodeRune(r))
+		}
+		ed.Write(encodeSpecial(event.KeyEnter))
+		for _, r := range "gamma delta" {
+			ed.Write(encodeRune(r))
+		}
+		ed.Write(encodeSpecial(event.KeyEsc))
+		ed.buffer.cursorRow = 0
+		ed.buffer.cursorCol = 0
+
+		convey.Convey("When 'f' is pressed", func() {
+			ed.Write(encodeRune('f'))
+			frame := decodeFrame(ed)
+
+			convey.Convey("It should overlay jump hints and show the jump prompt", func() {
+				convey.So(frame, convey.ShouldNotBeNil)
+				convey.So(frame.CommandLine, convey.ShouldEqual, "f ")
+				convey.So(frame.Lines[0], convey.ShouldStartWith, "asdfg")
+				convey.So(frame.Lines[1], convey.ShouldStartWith, "qwert")
+			})
+		})
+
+		convey.Convey("When 'f' then a jump label are pressed", func() {
+			ed.Write(encodeRune('f'))
+			ed.Write(encodeRune('g'))
+
+			convey.Convey("It should jump to the labeled position and exit jump mode", func() {
+				convey.So(ed.buffer.cursorRow, convey.ShouldEqual, 0)
+				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, 4)
+				convey.So(ed.jumpActive(), convey.ShouldBeFalse)
+			})
+		})
+	})
+
+	convey.Convey("Given an Editor with more jump targets than the alphabet", t, func() {
+		ed := NewEditor(EditorWithSize(80, 6))
+		ed.Write(encodeRune('i'))
+		for _, r := range "abcdefghijklmnopqrstuvwxyzabcde" {
+			ed.Write(encodeRune(r))
+		}
+		ed.Write(encodeSpecial(event.KeyEsc))
+
+		convey.Convey("When 'f' then the first jump prefix are pressed", func() {
+			ed.Write(encodeRune('f'))
+			ed.Write(encodeRune('a'))
+			frame := decodeFrame(ed)
+
+			convey.Convey("It should stay in jump mode and refine the overlay", func() {
+				convey.So(frame, convey.ShouldNotBeNil)
+				convey.So(ed.jumpActive(), convey.ShouldBeTrue)
+				convey.So(ed.jumpCodeLen, convey.ShouldEqual, 2)
+				convey.So(frame.CommandLine, convey.ShouldEqual, "f a")
+				convey.So(frame.Lines[0], convey.ShouldStartWith, "asdfg")
+			})
+		})
+
+		convey.Convey("When 'f' then a complete jump code are pressed", func() {
+			ed.Write(encodeRune('f'))
+			ed.Write(encodeRune('a'))
+			ed.Write(encodeRune('d'))
+
+			convey.Convey("It should jump once the code is complete", func() {
+				convey.So(ed.buffer.cursorRow, convey.ShouldEqual, 0)
+				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, 2)
+				convey.So(ed.jumpActive(), convey.ShouldBeFalse)
 			})
 		})
 	})

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/theapemachine/piaf/event"
 	"github.com/theapemachine/piaf/wire"
@@ -15,6 +16,8 @@ const (
 	modeInsert  = "INSERT"
 	modeCommand = "COMMAND"
 )
+
+const jumpAlphabet = "asdfghjklqwertyuiopzxcvbnm"
 
 /*
 Editor consumes event wire format and emits Frame wire format.
@@ -30,6 +33,9 @@ type Editor struct {
 	mode          string
 	commandLine   []rune
 	quitRequested bool
+	jumpPrefix    string
+	jumpTargets   []jumpTarget
+	jumpCodeLen   int
 	output        []byte
 	readOff       int
 }
@@ -132,6 +138,13 @@ func (ed *Editor) Close() error {
 }
 
 func (ed *Editor) handleKey(key event.Key) {
+	if ed.jumpActive() {
+		ed.clearJump()
+		ed.render()
+
+		return
+	}
+
 	switch key {
 	case event.KeyEsc:
 		if ed.mode == modeCommand {
@@ -213,7 +226,8 @@ func (ed *Editor) handleRune(r rune) {
 	case modeCommand:
 		ed.commandLine = append(ed.commandLine, r)
 	default:
-		if ed.inExplorer {
+		if ed.handleJumpRune(r) {
+		} else if ed.inExplorer {
 			ed.applyExplorerCommand(r)
 		} else if ed.inChat {
 			ed.applyChatCommand(r)
@@ -283,6 +297,8 @@ func (ed *Editor) applyNormalCommand(r rune) {
 		ed.buffer.MoveLineStart()
 	case '$':
 		ed.buffer.MoveLineEnd()
+	case 'f':
+		ed.startJump()
 	}
 }
 
@@ -373,7 +389,10 @@ func (ed *Editor) render() {
 		cursorCol = 0
 	}
 
-	if ed.mode == modeCommand {
+	if ed.jumpActive() {
+		lines = ed.jumpLines(lines)
+		cmdLine = "f " + ed.jumpPrefix
+	} else if ed.mode == modeCommand {
 		cmdLine = ": " + string(ed.commandLine)
 		cursorRow = ed.buffer.height - 1
 		cursorCol = 2 + len(ed.commandLine)
@@ -418,6 +437,169 @@ func (ed *Editor) openChat(mode string) {
 	ed.inChat = true
 	ed.inExplorer = false
 	ed.chat.SetMode(mode)
+}
+
+type jumpTarget struct {
+	row  int
+	col  int
+	code string
+}
+
+func (ed *Editor) jumpActive() bool {
+	return len(ed.jumpTargets) > 0
+}
+
+func (ed *Editor) clearJump() {
+	ed.jumpPrefix = ""
+	ed.jumpTargets = nil
+	ed.jumpCodeLen = 0
+}
+
+func (ed *Editor) startJump() {
+	targets := ed.visibleJumpTargets()
+
+	if len(targets) == 0 {
+		return
+	}
+
+	codeLen := jumpCodeLength(len(targets))
+
+	for index := range targets {
+		targets[index].code = jumpCode(index, codeLen)
+	}
+
+	ed.jumpPrefix = ""
+	ed.jumpTargets = targets
+	ed.jumpCodeLen = codeLen
+}
+
+func (ed *Editor) handleJumpRune(r rune) bool {
+	if !ed.jumpActive() {
+		return false
+	}
+
+	if !strings.ContainsRune(jumpAlphabet, r) {
+		ed.clearJump()
+
+		return true
+	}
+
+	ed.jumpPrefix += string(r)
+
+	if len(ed.jumpPrefix) < ed.jumpCodeLen {
+		if len(ed.filteredJumpTargets()) == 0 {
+			ed.clearJump()
+		}
+
+		return true
+	}
+
+	for _, target := range ed.jumpTargets {
+		if target.code == ed.jumpPrefix {
+			ed.buffer.cursorRow = target.row
+			ed.buffer.cursorCol = target.col
+			break
+		}
+	}
+
+	ed.clearJump()
+
+	return true
+}
+
+func (ed *Editor) visibleJumpTargets() []jumpTarget {
+	lines := ed.buffer.lines
+	maxRows := ed.buffer.height - 1
+
+	if maxRows <= 0 || maxRows > len(lines) {
+		maxRows = len(lines)
+	}
+
+	targets := make([]jumpTarget, 0)
+
+	for row := range maxRows {
+		line := lines[row]
+
+		if len(line) == 0 {
+			continue
+		}
+
+		targets = append(targets, jumpTarget{row: row, col: 0})
+
+		for col, r := range line {
+			if col == 0 || unicode.IsSpace(r) {
+				continue
+			}
+
+			targets = append(targets, jumpTarget{row: row, col: col})
+		}
+	}
+
+	return targets
+}
+
+func (ed *Editor) filteredJumpTargets() []jumpTarget {
+	if !ed.jumpActive() {
+		return nil
+	}
+
+	if ed.jumpPrefix == "" {
+		return ed.jumpTargets
+	}
+
+	targets := make([]jumpTarget, 0, len(ed.jumpTargets))
+
+	for _, target := range ed.jumpTargets {
+		if strings.HasPrefix(target.code, ed.jumpPrefix) {
+			targets = append(targets, target)
+		}
+	}
+
+	return targets
+}
+
+func (ed *Editor) jumpLines(lines []string) []string {
+	jumpLines := append([]string(nil), lines...)
+
+	for _, target := range ed.filteredJumpTargets() {
+		if target.row >= len(jumpLines) {
+			continue
+		}
+
+		line := []rune(jumpLines[target.row])
+
+		if target.col >= len(line) || len(target.code) <= len(ed.jumpPrefix) {
+			continue
+		}
+
+		line[target.col] = rune(target.code[len(ed.jumpPrefix)])
+		jumpLines[target.row] = string(line)
+	}
+
+	return jumpLines
+}
+
+func jumpCodeLength(count int) int {
+	codeLen := 1
+	capacity := len(jumpAlphabet)
+
+	for count > capacity {
+		codeLen++
+		capacity *= len(jumpAlphabet)
+	}
+
+	return codeLen
+}
+
+func jumpCode(index, codeLen int) string {
+	code := make([]byte, codeLen)
+
+	for position := codeLen - 1; position >= 0; position-- {
+		code[position] = jumpAlphabet[index%len(jumpAlphabet)]
+		index /= len(jumpAlphabet)
+	}
+
+	return string(code)
 }
 
 func (ed *Editor) workspaceRoot() string {
