@@ -1,4 +1,4 @@
-package tui
+package wire
 
 import (
 	"io"
@@ -31,6 +31,7 @@ func TestFrameReadWriteRoundTrip(t *testing.T) {
 			convey.So(decoded.Mode, convey.ShouldEqual, frame.Mode)
 			convey.So(decoded.Width, convey.ShouldEqual, frame.Width)
 			convey.So(decoded.Height, convey.ShouldEqual, frame.Height)
+			convey.So(decoded.CommandLine, convey.ShouldEqual, frame.CommandLine)
 		})
 	})
 }

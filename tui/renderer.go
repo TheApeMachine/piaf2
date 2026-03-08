@@ -2,6 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"io"
+
+	"github.com/theapemachine/piaf/wire"
 )
 
 const (
@@ -36,7 +39,7 @@ Read implements the io.Reader interface.
 */
 func (renderer *Renderer) Read(p []byte) (n int, err error) {
 	if renderer.readOffset >= len(renderer.output) {
-		return 0, nil
+		return 0, io.EOF
 	}
 
 	n = copy(p, renderer.output[renderer.readOffset:])
@@ -54,7 +57,7 @@ func (renderer *Renderer) Write(p []byte) (n int, err error) {
 		return 0, nil
 	}
 
-	frame := &Frame{}
+	frame := &wire.Frame{}
 	if _, err := frame.Write(p); err != nil {
 		return 0, err
 	}
@@ -83,7 +86,9 @@ func (renderer *Renderer) Write(p []byte) (n int, err error) {
 	renderer.output = append(renderer.output, fmt.Sprintf(ansiCursorPos, int(frame.Height), 1)...)
 	renderer.output = append(renderer.output, ansiClearLine...)
 
-	if frame.Mode != "" {
+	if frame.CommandLine != "" {
+		renderer.output = append(renderer.output, frame.CommandLine...)
+	} else if frame.Mode != "" {
 		renderer.output = append(renderer.output, "-- "+frame.Mode+" --"...)
 	}
 

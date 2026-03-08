@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/piaf/editor"
 )
 
 func TestNewApp(t *testing.T) {
@@ -21,11 +22,11 @@ func TestNewApp(t *testing.T) {
 		})
 
 		convey.Convey("When called with AppWithEditor", func() {
-			editor := NewEditor()
-			app := NewApp(AppWithEditor(editor))
+			ed := editor.NewEditor()
+			app := NewApp(AppWithEditor(ed))
 
 			convey.Convey("It should set the editor", func() {
-				convey.So(app.editor, convey.ShouldEqual, editor)
+				convey.So(app.editor, convey.ShouldEqual, ed)
 			})
 		})
 	})
@@ -81,7 +82,7 @@ func BenchmarkAppRead(b *testing.B) {
 	buf := make([]byte, 4096)
 
 	for b.Loop() {
-		app.editor.readOff = 0
+		app.readOff = 0
 		_, _ = app.Read(buf)
 	}
 }

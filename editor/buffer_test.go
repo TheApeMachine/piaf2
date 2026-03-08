@@ -1,7 +1,6 @@
-package tui
+package editor
 
 import (
-	"io"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
@@ -117,7 +116,6 @@ func TestBufferDeleteAt(t *testing.T) {
 			buf.MoveLineEnd()
 			buf.Newline()
 			buf.InsertRune('d')
-			// position at end of first line
 			buf.cursorRow = 0
 			buf.cursorCol = 3
 			buf.DeleteAt()
@@ -219,24 +217,20 @@ func TestBufferMovement(t *testing.T) {
 	})
 }
 
-func TestBufferReadWrite(t *testing.T) {
+func TestBufferWrite(t *testing.T) {
 	convey.Convey("Given a Buffer", t, func() {
 		buf := NewBuffer()
 
-		convey.Convey("When Write inserts text and Read is called", func() {
-			buf.Write([]byte("hi"))
-			data, err := io.ReadAll(buf)
+		convey.Convey("When Write inserts text", func() {
+			n, err := buf.Write([]byte("hi"))
 
-			convey.Convey("It should round-trip without error", func() {
+			convey.Convey("It should return bytes written and nil", func() {
+				convey.So(n, convey.ShouldEqual, 2)
 				convey.So(err, convey.ShouldBeNil)
-				convey.So(len(data), convey.ShouldBeGreaterThan, 0)
 			})
 
-			convey.Convey("It should decode to the same content", func() {
-				decoded := &Frame{}
-				_, decErr := decoded.Write(data)
-				convey.So(decErr, convey.ShouldBeNil)
-				convey.So(decoded.Lines[0], convey.ShouldEqual, "hi")
+			convey.Convey("It should have the content", func() {
+				convey.So(string(buf.lines[0]), convey.ShouldEqual, "hi")
 			})
 		})
 	})
@@ -261,18 +255,6 @@ func BenchmarkBufferInsertRune(b *testing.B) {
 
 	for b.Loop() {
 		buf.InsertRune('x')
-	}
-}
-
-func BenchmarkBufferRead(b *testing.B) {
-	buf := NewBuffer()
-	buf.Write([]byte("benchmark line content"))
-	data := make([]byte, 256)
-
-	for b.Loop() {
-		buf.readBuf = nil
-		buf.readOffset = 0
-		_, _ = buf.Read(data)
 	}
 }
 

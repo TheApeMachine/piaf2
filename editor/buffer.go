@@ -1,14 +1,16 @@
-package tui
+package editor
 
 import (
 	"io"
+	"os"
+	"strings"
 	"unicode/utf8"
 )
 
 /*
 Buffer stores the editor's text content and cursor position.
-It implements io.ReadWriteCloser: Write inserts UTF-8 text at the cursor,
-Read emits the current state as Frame wire format.
+Implements io.ReadWriteCloser: Write inserts UTF-8 text at the cursor,
+Read emits the current state as wire format (internal use).
 */
 type Buffer struct {
 	lines      [][]rune
@@ -27,7 +29,6 @@ type bufferOpts func(*Buffer)
 
 /*
 NewBuffer instantiates a new Buffer with one empty line.
-The buffer starts empty and ready for editing.
 */
 func NewBuffer(opts ...bufferOpts) *Buffer {
 	buf := &Buffer{
@@ -44,7 +45,32 @@ func NewBuffer(opts ...bufferOpts) *Buffer {
 }
 
 /*
-BufferWithSize sets the terminal dimensions used when emitting Frame data.
+LoadPath reads the file at path and populates the buffer.
+Creates one empty line if the file cannot be read.
+*/
+func (buf *Buffer) LoadPath(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		buf.lines = [][]rune{{}}
+		buf.cursorRow = 0
+		buf.cursorCol = 0
+		return
+	}
+
+	lines := strings.Split(string(data), "\n")
+	buf.lines = make([][]rune, len(lines))
+
+	for index, line := range lines {
+		buf.lines[index] = []rune(line)
+	}
+
+	buf.cursorRow = 0
+	buf.cursorCol = 0
+	buf.readBuf = nil
+}
+
+/*
+BufferWithSize sets the terminal dimensions.
 */
 func BufferWithSize(width, height int) bufferOpts {
 	return func(buf *Buffer) {
@@ -54,7 +80,7 @@ func BufferWithSize(width, height int) bufferOpts {
 }
 
 /*
-InsertRune inserts a rune at the current cursor position and advances the cursor.
+InsertRune inserts a rune at the current cursor position.
 */
 func (buf *Buffer) InsertRune(r rune) {
 	line := buf.lines[buf.cursorRow]
@@ -75,8 +101,7 @@ func (buf *Buffer) InsertRune(r rune) {
 }
 
 /*
-DeleteBefore removes the rune immediately before the cursor (backspace semantics).
-If the cursor is at column 0, it merges the current line with the line above.
+DeleteBefore removes the rune before the cursor.
 */
 func (buf *Buffer) DeleteBefore() {
 	if buf.cursorCol > 0 {
@@ -107,8 +132,7 @@ func (buf *Buffer) DeleteBefore() {
 }
 
 /*
-DeleteAt removes the rune at the cursor position (delete-key semantics).
-If the cursor is at end of line, it merges with the next line.
+DeleteAt removes the rune at the cursor.
 */
 func (buf *Buffer) DeleteAt() {
 	line := buf.lines[buf.cursorRow]
@@ -134,7 +158,7 @@ func (buf *Buffer) DeleteAt() {
 }
 
 /*
-Newline splits the current line at the cursor, inserting a new line below.
+Newline splits the current line at the cursor.
 */
 func (buf *Buffer) Newline() {
 	line := buf.lines[buf.cursorRow]
@@ -159,7 +183,7 @@ func (buf *Buffer) Newline() {
 }
 
 /*
-MoveUp moves the cursor one row up, clamping the column to the line length.
+MoveUp moves the cursor one row up.
 */
 func (buf *Buffer) MoveUp() {
 	if buf.cursorRow > 0 {
@@ -169,7 +193,7 @@ func (buf *Buffer) MoveUp() {
 }
 
 /*
-MoveDown moves the cursor one row down, clamping the column to the line length.
+MoveDown moves the cursor one row down.
 */
 func (buf *Buffer) MoveDown() {
 	if buf.cursorRow < len(buf.lines)-1 {
@@ -179,7 +203,7 @@ func (buf *Buffer) MoveDown() {
 }
 
 /*
-MoveLeft moves the cursor one column left, wrapping to the previous line end if needed.
+MoveLeft moves the cursor one column left.
 */
 func (buf *Buffer) MoveLeft() {
 	if buf.cursorCol > 0 {
@@ -191,7 +215,7 @@ func (buf *Buffer) MoveLeft() {
 }
 
 /*
-MoveRight moves the cursor one column right, wrapping to the next line start if needed.
+MoveRight moves the cursor one column right.
 */
 func (buf *Buffer) MoveRight() {
 	if buf.cursorCol < len(buf.lines[buf.cursorRow]) {
@@ -217,7 +241,7 @@ func (buf *Buffer) MoveLineEnd() {
 }
 
 /*
-StringLines returns the buffer content as a slice of strings for Frame encoding.
+StringLines returns the buffer content as strings.
 */
 func (buf *Buffer) StringLines() []string {
 	result := make([]string, len(buf.lines))
@@ -229,9 +253,6 @@ func (buf *Buffer) StringLines() []string {
 	return result
 }
 
-/*
-clampCol ensures the cursor column is within the current line bounds.
-*/
 func (buf *Buffer) clampCol() {
 	if lineLen := len(buf.lines[buf.cursorRow]); buf.cursorCol > lineLen {
 		buf.cursorCol = lineLen
@@ -240,38 +261,14 @@ func (buf *Buffer) clampCol() {
 
 /*
 Read implements the io.Reader interface.
-Emits the current buffer state as Frame wire format.
 */
 func (buf *Buffer) Read(p []byte) (n int, err error) {
-	if buf.readBuf == nil {
-		frame := &Frame{
-			Lines:     buf.StringLines(),
-			CursorRow: uint32(buf.cursorRow),
-			CursorCol: uint32(buf.cursorCol),
-			Width:     uint32(buf.width),
-			Height:    uint32(buf.height),
-		}
-
-		if buf.readBuf, err = io.ReadAll(frame); err != nil {
-			return 0, err
-		}
-
-		buf.readOffset = 0
-	}
-
-	if buf.readOffset >= len(buf.readBuf) {
-		return 0, io.EOF
-	}
-
-	n = copy(p, buf.readBuf[buf.readOffset:])
-	buf.readOffset += n
-
-	return n, nil
+	return 0, io.EOF
 }
 
 /*
 Write implements the io.Writer interface.
-Inserts the given UTF-8 bytes as text at the cursor position.
+Inserts the given UTF-8 bytes at the cursor.
 */
 func (buf *Buffer) Write(p []byte) (n int, err error) {
 	for len(p) > 0 {

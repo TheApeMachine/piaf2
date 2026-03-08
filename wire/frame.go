@@ -1,4 +1,4 @@
-package tui
+package wire
 
 import (
 	"encoding/binary"
@@ -11,12 +11,13 @@ Implements io.ReadWriteCloser: Write decodes wire format, Read encodes it.
 Wire format is a compact binary layout, pending Cap'n Proto migration.
 */
 type Frame struct {
-	Lines     []string
-	CursorRow uint32
-	CursorCol uint32
-	Mode      string
-	Width     uint32
-	Height    uint32
+	Lines       []string
+	CursorRow   uint32
+	CursorCol   uint32
+	Mode        string
+	Width       uint32
+	Height      uint32
+	CommandLine string
 
 	readBuf    []byte
 	readOffset int
@@ -36,7 +37,7 @@ func (frame *Frame) Read(p []byte) (n int, err error) {
 		for _, line := range frame.Lines {
 			size += 4 + len(line)
 		}
-		size += 4 + 4 + 4 + len(frame.Mode) + 4 + 4
+		size += 4 + 4 + 4 + len(frame.Mode) + 4 + 4 + 4 + len(frame.CommandLine)
 
 		frame.readBuf = make([]byte, 0, size)
 		buf := make([]byte, 4)
@@ -61,6 +62,9 @@ func (frame *Frame) Read(p []byte) (n int, err error) {
 		frame.readBuf = append(frame.readBuf, buf...)
 		binary.LittleEndian.PutUint32(buf, frame.Height)
 		frame.readBuf = append(frame.readBuf, buf...)
+		binary.LittleEndian.PutUint32(buf, uint32(len(frame.CommandLine)))
+		frame.readBuf = append(frame.readBuf, buf...)
+		frame.readBuf = append(frame.readBuf, frame.CommandLine...)
 
 		frame.readOffset = 0
 
@@ -113,7 +117,7 @@ func (frame *Frame) Write(p []byte) (n int, err error) {
 		offset += int(lineLen)
 	}
 
-	if offset+20 > len(p) {
+	if offset+24 > len(p) {
 		return 0, io.ErrShortBuffer
 	}
 
@@ -124,7 +128,7 @@ func (frame *Frame) Write(p []byte) (n int, err error) {
 
 	modeLen := binary.LittleEndian.Uint32(p[offset:])
 	offset += 4
-	if offset+int(modeLen)+8 > len(p) {
+	if offset+int(modeLen)+12 > len(p) {
 		return 0, io.ErrShortBuffer
 	}
 
@@ -134,6 +138,19 @@ func (frame *Frame) Write(p []byte) (n int, err error) {
 	frame.Width = binary.LittleEndian.Uint32(p[offset:])
 	offset += 4
 	frame.Height = binary.LittleEndian.Uint32(p[offset:])
+	offset += 4
+
+	if offset+4 > len(p) {
+		return 0, io.ErrShortBuffer
+	}
+
+	cmdLen := binary.LittleEndian.Uint32(p[offset:])
+	offset += 4
+	if offset+int(cmdLen) > len(p) {
+		return 0, io.ErrShortBuffer
+	}
+
+	frame.CommandLine = string(p[offset : offset+int(cmdLen)])
 
 	frame.readBuf = nil
 	frame.readOffset = 0
