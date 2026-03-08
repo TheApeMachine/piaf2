@@ -2,6 +2,7 @@ package editor
 
 import (
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
@@ -266,6 +267,95 @@ func TestEditorCommandMode(t *testing.T) {
 
 			convey.Convey("It should return to NORMAL mode", func() {
 				convey.So(ed.mode, convey.ShouldEqual, modeNormal)
+			})
+		})
+
+		convey.Convey("When ':chat' and Enter are entered", func() {
+			ed.Write(encodeRune(':'))
+			ed.Write(encodeRune('c'))
+			ed.Write(encodeRune('h'))
+			ed.Write(encodeRune('a'))
+			ed.Write(encodeRune('t'))
+			ed.Write(encodeSpecial(event.KeyEnter))
+
+			convey.Convey("It should enter the chat window", func() {
+				convey.So(ed.inChat, convey.ShouldBeTrue)
+				convey.So(ed.chat, convey.ShouldNotBeNil)
+				convey.So(ed.chat.Mode(), convey.ShouldEqual, "CHAT")
+			})
+		})
+
+		convey.Convey("When ':implement' and Enter are entered", func() {
+			ed.Write(encodeRune(':'))
+			for _, r := range "implement" {
+				ed.Write(encodeRune(r))
+			}
+			ed.Write(encodeSpecial(event.KeyEnter))
+
+			convey.Convey("It should enter implementation mode", func() {
+				convey.So(ed.inChat, convey.ShouldBeTrue)
+				convey.So(ed.chat, convey.ShouldNotBeNil)
+				convey.So(ed.chat.Mode(), convey.ShouldEqual, "IMPLEMENT")
+			})
+		})
+	})
+}
+
+func TestEditorChatFlow(t *testing.T) {
+	convey.Convey("Given an Editor in the chat window", t, func() {
+		ed := NewEditor(EditorWithSize(80, 12))
+		ed.openChat("CHAT")
+
+		convey.Convey("When a message is submitted", func() {
+			ed.Write(encodeRune('i'))
+			for _, r := range "browse ." {
+				ed.Write(encodeRune(r))
+			}
+			ed.Write(encodeSpecial(event.KeyEnter))
+
+			convey.Convey("It should keep the transcript in chat history", func() {
+				transcript := strings.Join(ed.chat.history, "\n")
+				convey.So(ed.mode, convey.ShouldEqual, modeNormal)
+				convey.So(transcript, convey.ShouldContainSubstring, "You: browse .")
+				convey.So(transcript, convey.ShouldContainSubstring, "Pipeline:")
+				convey.So(transcript, convey.ShouldContainSubstring, "Tool browse .")
+			})
+		})
+
+		convey.Convey("When ':q' is executed in chat", func() {
+			ed.Write(encodeRune(':'))
+			ed.Write(encodeRune('q'))
+			ed.Write(encodeSpecial(event.KeyEnter))
+
+			convey.Convey("It should close chat without quitting the editor", func() {
+				convey.So(ed.inChat, convey.ShouldBeFalse)
+				convey.So(ed.QuitRequested(), convey.ShouldBeFalse)
+			})
+		})
+	})
+}
+
+func TestEditorImplementAccept(t *testing.T) {
+	convey.Convey("Given an Editor in implementation mode", t, func() {
+		ed := NewEditor(EditorWithSize(80, 12))
+		ed.openChat("IMPLEMENT")
+
+		convey.Convey("When a prompt is submitted and accepted", func() {
+			ed.Write(encodeRune('i'))
+			for _, r := range "add tests" {
+				ed.Write(encodeRune(r))
+			}
+			ed.Write(encodeSpecial(event.KeyEnter))
+			ed.Write(encodeRune(':'))
+			for _, r := range "accept" {
+				ed.Write(encodeRune(r))
+			}
+			ed.Write(encodeSpecial(event.KeyEnter))
+
+			convey.Convey("It should record the review result", func() {
+				transcript := strings.Join(ed.chat.history, "\n")
+				convey.So(transcript, convey.ShouldContainSubstring, "Accept with :accept or :reject.")
+				convey.So(transcript, convey.ShouldContainSubstring, "implementation proposal accepted")
 			})
 		})
 	})
