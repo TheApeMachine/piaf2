@@ -8,6 +8,8 @@ import (
 
 var workflowMessageReplacer = strings.NewReplacer("\n", ",", ";", ",", " and ", ",")
 
+const maxAssignedDevelopers = 2
+
 /*
 Workflow tracks the implementation board, communication channel, and progress.
 */
@@ -62,7 +64,10 @@ func (workflow *Workflow) DeveloperTasks() []string {
 DeveloperCount returns how many developers the team lead should assign.
 */
 func (workflow *Workflow) DeveloperCount() int {
-	return len(workflow.DeveloperTasks())
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	return len(workflow.developerTasks)
 }
 
 /*
@@ -145,32 +150,25 @@ func workflowBoard(message string) []string {
 }
 
 func workflowDeveloperTasks(board []string) []string {
-	tasks := make([]string, 0, 3)
+	tasks := make([]string, 0, maxAssignedDevelopers)
 	for _, item := range board {
-		if strings.Contains(strings.ToLower(item), "write unit and integration coverage") {
+		lower := strings.ToLower(item)
+		if strings.Contains(lower, "write unit and integration coverage") {
 			continue
 		}
 
-		if strings.Contains(strings.ToLower(item), "prepare the implementation review") {
+		if strings.Contains(lower, "prepare the implementation review") {
 			continue
 		}
 
 		tasks = append(tasks, item)
-		if len(tasks) == 3 {
+		if len(tasks) == maxAssignedDevelopers {
 			break
 		}
 	}
 
 	if len(tasks) == 0 {
 		return []string{"Implement the requested change"}
-	}
-
-	if len(tasks) == 1 {
-		return tasks
-	}
-
-	if len(tasks) > 2 {
-		return tasks[:2]
 	}
 
 	return tasks

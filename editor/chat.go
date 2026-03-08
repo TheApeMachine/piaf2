@@ -16,9 +16,11 @@ import (
 
 const (
 	projectManagerProviderOffset = 0
+	teamLeadPosition             = 0
 	teamLeadProviderOffset       = 1
 	developerProviderOffset      = 2
-	reviewProviderOffset         = 3
+	qaProviderOffset             = 3
+	reviewProviderOffset         = 4
 )
 
 /*
@@ -299,7 +301,8 @@ func (chat *Chat) submitDiscussion(message string) {
 	transcript := chat.snapshot()
 	responses := make([]string, 0, len(order))
 	for _, current := range order {
-		toolOutput := chat.composeToolOutput(baseToolOutput, current.Name())
+		agentLabel := "Discussion " + current.Name()
+		toolOutput := chat.composeToolOutput(baseToolOutput, agentLabel)
 		systemPrompt := chat.systemPrompt
 		line, response := chat.runStage(current.Name(), current, &provider.Request{
 			Mode:          chat.mode,
@@ -311,7 +314,7 @@ func (chat *Chat) submitDiscussion(message string) {
 		})
 		transcript = append(transcript, line)
 		responses = append(responses, line)
-		chat.memory.RememberAgent(current.Name(), response)
+		chat.memory.RememberAgent(agentLabel, response)
 	}
 }
 
@@ -348,7 +351,7 @@ func (chat *Chat) submitImplementation(message string) {
 	chat.memory.RememberAgent("Project Manager", response)
 	chat.memory.RememberShared("Project board prepared for: " + message)
 
-	teamLead := order[teamLeadProviderOffset%len(order)]
+	teamLead := order[providerIndex(teamLeadPosition, teamLeadProviderOffset, len(order))]
 	developerTasks := chat.workflow.DeveloperTasks()
 	developerCount := len(developerTasks)
 	if developerCount == 0 {
@@ -375,7 +378,7 @@ func (chat *Chat) submitImplementation(message string) {
 			chat.appendHistory(channel)
 		}
 
-		developer := order[chat.providerIndex(index, developerProviderOffset, len(order))]
+		developer := order[providerIndex(index, developerProviderOffset, len(order))]
 		label := fmt.Sprintf("Developer %d [%s]", index+1, developer.Name())
 		detail := fmt.Sprintf("Implement %s. Report progress back to the chat and mention any files or tests that need review.", task)
 		developerRequest := chat.implementationRequest(fmt.Sprintf("Developer %d", index+1), message, baseToolOutput, detail, transcript, responses)
@@ -387,7 +390,7 @@ func (chat *Chat) submitImplementation(message string) {
 		chat.appendHistory(chat.workflow.ReportProgress(fmt.Sprintf("Developer %d", index+1), "reported implementation progress to the chat"))
 	}
 
-	qaProvider := order[chat.providerIndex(developerCount, developerProviderOffset, len(order))]
+	qaProvider := order[providerIndex(developerCount, qaProviderOffset, len(order))]
 	qaRequest := chat.implementationRequest("QA", message, baseToolOutput, "Write the unit and integration test strategy, review the implementation quality, and start with `Decision: PASS` or `Decision: REWORK`.", transcript, responses)
 	line, response = chat.runStage("QA ["+qaProvider.Name()+"]", qaProvider, qaRequest)
 	transcript = append(transcript, line)
@@ -399,7 +402,7 @@ func (chat *Chat) submitImplementation(message string) {
 	if decision == "REWORK" {
 		chat.appendHistory(chat.workflow.RequestRework(response))
 		for index, task := range developerTasks {
-			developer := order[chat.providerIndex(index, developerProviderOffset, len(order))]
+			developer := order[providerIndex(index, developerProviderOffset, len(order))]
 			label := fmt.Sprintf("Developer %d [%s]", index+1, developer.Name())
 			detail := fmt.Sprintf("Address the QA findings while updating %s. Confirm the revised intent and the tests you touched.", task)
 			developerRequest := chat.implementationRequest(fmt.Sprintf("Developer %d", index+1), message, baseToolOutput, detail, transcript, responses)
@@ -420,7 +423,7 @@ func (chat *Chat) submitImplementation(message string) {
 
 	chat.appendHistory(chat.workflow.SetReview(decision))
 
-	reviewProvider := order[chat.providerIndex(developerCount, reviewProviderOffset, len(order))]
+	reviewProvider := order[providerIndex(developerCount, reviewProviderOffset, len(order))]
 	reviewRequest := chat.implementationRequest("Review", message, baseToolOutput, "Summarize the project board, communication channel status, memory, and review outcome. End with `Accept with :accept or :reject.`", transcript, responses)
 	line, response = chat.runStage("Review ["+reviewProvider.Name()+"]", reviewProvider, reviewRequest)
 	if !strings.Contains(strings.ToLower(response), "accept") {
@@ -550,11 +553,7 @@ func (chat *Chat) qaDecision(response string) string {
 	return "PASS"
 }
 
-func (chat *Chat) providerIndex(position int, offset int, total int) int {
-	if total == 0 {
-		return 0
-	}
-
+func providerIndex(position int, offset int, total int) int {
 	return (position + offset) % total
 }
 

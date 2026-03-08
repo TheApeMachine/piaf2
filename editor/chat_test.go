@@ -75,6 +75,7 @@ func TestChatSubmit(t *testing.T) {
 		chat := NewChat(
 			ChatWithRoot(root),
 			ChatWithRandom(rand.New(rand.NewSource(7))),
+			ChatWithSystemPrompt("Keep discussion concise."),
 			ChatWithProviders(openai, claude, gemini),
 		)
 
@@ -109,6 +110,7 @@ func TestChatSubmit(t *testing.T) {
 				convey.So(recorded[0].ToolOutput, convey.ShouldContainSubstring, "Tool browse .")
 				convey.So(recorded[1].ToolOutput, convey.ShouldContainSubstring, "Tool browse .")
 				convey.So(recorded[2].ToolOutput, convey.ShouldContainSubstring, "Tool browse .")
+				convey.So(recorded[0].SystemPrompt, convey.ShouldEqual, "Keep discussion concise.")
 				convey.So(recorded[0].ToolOutput, convey.ShouldContainSubstring, "- docs/")
 				convey.So(recorded[0].ToolOutput, convey.ShouldContainSubstring, "- note.txt")
 				convey.So(priorCounts, convey.ShouldResemble, []int{0, 1, 2})
@@ -222,6 +224,12 @@ func TestChatImplementWorkflow(t *testing.T) {
 
 			convey.Convey("It should run the team workflow with board, channels, progress, QA, and review", func() {
 				transcript := strings.Join(chat.Lines(), "\n")
+				systemPrompts := []string{}
+				for _, current := range []*stubProvider{projectManager, teamLead, qa} {
+					for _, request := range current.requests {
+						systemPrompts = append(systemPrompts, request.SystemPrompt)
+					}
+				}
 
 				convey.So(transcript, convey.ShouldContainSubstring, "Project board:")
 				convey.So(transcript, convey.ShouldContainSubstring, "Team: Project Manager -> Team Lead -> Developer 1 -> Developer 2 -> QA -> Review")
@@ -235,6 +243,11 @@ func TestChatImplementWorkflow(t *testing.T) {
 				convey.So(transcript, convey.ShouldContainSubstring, "Review: QA requested improvements.")
 				convey.So(transcript, convey.ShouldContainSubstring, "Review: QA final decision PASS.")
 				convey.So(transcript, convey.ShouldContainSubstring, "Accept with :accept or :reject.")
+				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Project Manager")
+				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Team Lead")
+				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Developer 1")
+				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the QA")
+				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Review")
 			})
 		})
 	})
