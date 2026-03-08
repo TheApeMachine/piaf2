@@ -92,7 +92,12 @@ func (frame *Frame) Write(p []byte) (n int, err error) {
 	numLines := binary.LittleEndian.Uint32(p[offset:])
 	offset += 4
 
+	if uint64(numLines) > uint64(len(p)-4)/4 {
+		return 0, io.ErrShortBuffer
+	}
+
 	frame.Lines = make([]string, 0, numLines)
+
 	for index := uint32(0); index < numLines; index++ {
 		if offset+4 > len(p) {
 			return 0, io.ErrShortBuffer
