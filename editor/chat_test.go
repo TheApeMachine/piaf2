@@ -18,6 +18,7 @@ type stubProvider struct {
 	name      string
 	responses []string
 	requests  []*provider.Request
+	generate  func(*provider.Request, int) string
 }
 
 func (stub *stubProvider) Name() string {
@@ -31,11 +32,16 @@ func (stub *stubProvider) Generate(_ context.Context, request *provider.Request)
 		ToolOutput:    request.ToolOutput,
 		Transcript:    append([]string(nil), request.Transcript...),
 		PriorResponse: append([]string(nil), request.PriorResponse...),
+		SystemPrompt:  request.SystemPrompt,
 	}
 
 	stub.requests = append(stub.requests, copyRequest)
 
 	index := len(stub.requests) - 1
+	if stub.generate != nil {
+		return stub.generate(copyRequest, index), nil
+	}
+
 	if index < len(stub.responses) {
 		return stub.responses[index], nil
 	}
@@ -69,6 +75,7 @@ func TestChatSubmit(t *testing.T) {
 		chat := NewChat(
 			ChatWithRoot(root),
 			ChatWithRandom(rand.New(rand.NewSource(7))),
+			ChatWithSystemPrompt("Keep discussion concise."),
 			ChatWithProviders(openai, claude, gemini),
 		)
 
@@ -103,6 +110,7 @@ func TestChatSubmit(t *testing.T) {
 				convey.So(recorded[0].ToolOutput, convey.ShouldContainSubstring, "Tool browse .")
 				convey.So(recorded[1].ToolOutput, convey.ShouldContainSubstring, "Tool browse .")
 				convey.So(recorded[2].ToolOutput, convey.ShouldContainSubstring, "Tool browse .")
+				convey.So(recorded[0].SystemPrompt, convey.ShouldEqual, "Keep discussion concise.")
 				convey.So(recorded[0].ToolOutput, convey.ShouldContainSubstring, "- docs/")
 				convey.So(recorded[0].ToolOutput, convey.ShouldContainSubstring, "- note.txt")
 				convey.So(priorCounts, convey.ShouldResemble, []int{0, 1, 2})
@@ -145,6 +153,101 @@ func TestChatImplementMode(t *testing.T) {
 			convey.Convey("It should end with accept and reject guidance", func() {
 				transcript := strings.Join(chat.Lines(), "\n")
 				convey.So(transcript, convey.ShouldContainSubstring, "Accept with :accept or :reject.")
+			})
+		})
+	})
+}
+
+func TestChatMemoryTools(t *testing.T) {
+	convey.Convey("Given a Chat with memory-aware agents", t, func() {
+		openai := &stubProvider{name: "OpenAI GPT-5.4", responses: []string{"remembered", "recalled"}}
+		claude := &stubProvider{name: "Claude Open 4.6", responses: []string{"tracked", "confirmed"}}
+		gemini := &stubProvider{name: "Gemini Pro 3.1", responses: []string{"stored", "shared"}}
+
+		chat := NewChat(
+			ChatWithRandom(rand.New(rand.NewSource(17))),
+			ChatWithProviders(openai, claude, gemini),
+		)
+
+		convey.Convey("When a memory entry is stored and recalled", func() {
+			chat.Submit("remember keep tests focused")
+			chat.Submit("recall focused")
+
+			convey.Convey("It should expose memory management to the agent pipeline", func() {
+				transcript := strings.Join(chat.Lines(), "\n")
+
+				convey.So(transcript, convey.ShouldContainSubstring, "System: memory stored -> keep tests focused")
+				convey.So(transcript, convey.ShouldContainSubstring, "System: memory recall.")
+				convey.So(transcript, convey.ShouldContainSubstring, "Shared: keep tests focused")
+				convey.So(openai.requests[1].ToolOutput, convey.ShouldContainSubstring, "Memory recall:")
+				convey.So(openai.requests[1].ToolOutput, convey.ShouldContainSubstring, "Shared: keep tests focused")
+			})
+		})
+	})
+}
+
+func TestChatImplementWorkflow(t *testing.T) {
+	convey.Convey("Given a Chat in implementation mode with a QA rework pass", t, func() {
+		qaReviews := 0
+		generate := func(request *provider.Request, _ int) string {
+			switch {
+			case strings.Contains(request.SystemPrompt, "Project Manager"):
+				return "Project board captured with scope and risks."
+			case strings.Contains(request.SystemPrompt, "Team Lead"):
+				return "Team staffed and assignments published."
+			case strings.Contains(request.SystemPrompt, "Developer"):
+				return "Developer implementation progress shared."
+			case strings.Contains(request.SystemPrompt, "QA"):
+				qaReviews++
+				if qaReviews == 1 {
+					return "Decision: REWORK\nUnit coverage is incomplete."
+				}
+
+				return "Decision: PASS\nCoverage now looks good."
+			default:
+				return "Review summary ready. Accept with :accept or :reject."
+			}
+		}
+
+		projectManager := &stubProvider{name: "OpenAI GPT-5.4", generate: generate}
+		teamLead := &stubProvider{name: "Claude Open 4.6", generate: generate}
+		qa := &stubProvider{name: "Gemini Pro 3.1", generate: generate}
+
+		chat := NewChat(
+			ChatWithRandom(rand.New(rand.NewSource(7))),
+			ChatWithProviders(projectManager, teamLead, qa),
+		)
+		chat.SetMode("IMPLEMENT")
+
+		convey.Convey("When an implementation request is submitted", func() {
+			chat.Submit("add a command palette and integration tests")
+
+			convey.Convey("It should run the team workflow with board, channels, progress, QA, and review", func() {
+				transcript := strings.Join(chat.Lines(), "\n")
+				systemPrompts := []string{}
+				for _, current := range []*stubProvider{projectManager, teamLead, qa} {
+					for _, request := range current.requests {
+						systemPrompts = append(systemPrompts, request.SystemPrompt)
+					}
+				}
+
+				convey.So(transcript, convey.ShouldContainSubstring, "Project board:")
+				convey.So(transcript, convey.ShouldContainSubstring, "Team: Project Manager -> Team Lead -> Developer 1 -> Developer 2 -> QA -> Review")
+				convey.So(transcript, convey.ShouldContainSubstring, "Assignment: Developer 1 owns")
+				convey.So(transcript, convey.ShouldContainSubstring, "Assignment: Developer 2 owns")
+				convey.So(transcript, convey.ShouldContainSubstring, "Channel coordination: Developer 1 intends to change")
+				convey.So(transcript, convey.ShouldContainSubstring, "Channel coordination: Team Lead confirms Developer 1 is clear to proceed")
+				convey.So(transcript, convey.ShouldContainSubstring, "Progress: Team Lead assigned 2 developer(s) and published the current plan.")
+				convey.So(transcript, convey.ShouldContainSubstring, "Progress: Developer 1 reported implementation progress to the chat.")
+				convey.So(transcript, convey.ShouldContainSubstring, "Progress: QA reviewed the implementation and test plan.")
+				convey.So(transcript, convey.ShouldContainSubstring, "Review: QA requested improvements.")
+				convey.So(transcript, convey.ShouldContainSubstring, "Review: QA final decision PASS.")
+				convey.So(transcript, convey.ShouldContainSubstring, "Accept with :accept or :reject.")
+				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Project Manager")
+				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Team Lead")
+				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Developer 1")
+				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the QA")
+				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Review")
 			})
 		})
 	})
