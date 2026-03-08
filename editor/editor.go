@@ -2,6 +2,8 @@ package editor
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/theapemachine/piaf/event"
@@ -20,7 +22,9 @@ Implements io.ReadWriteCloser: Write receives events, Read yields Frame bytes.
 */
 type Editor struct {
 	buffer        *Buffer
+	chat          *Chat
 	explorer      *Explorer
+	inChat        bool
 	inExplorer    bool
 	path          string
 	mode          string
@@ -138,7 +142,8 @@ func (ed *Editor) handleKey(key event.Key) {
 		}
 	case event.KeyUp:
 		if ed.mode != modeCommand {
-			if ed.inExplorer {
+			if ed.inChat {
+			} else if ed.inExplorer {
 				ed.explorer.MoveUp()
 			} else {
 				ed.buffer.MoveUp()
@@ -146,22 +151,27 @@ func (ed *Editor) handleKey(key event.Key) {
 		}
 	case event.KeyDown:
 		if ed.mode != modeCommand {
-			if ed.inExplorer {
+			if ed.inChat {
+			} else if ed.inExplorer {
 				ed.explorer.MoveDown()
 			} else {
 				ed.buffer.MoveDown()
 			}
 		}
 	case event.KeyLeft:
-		if ed.mode != modeCommand && !ed.inExplorer {
+		if ed.mode != modeCommand && !ed.inExplorer && !ed.inChat {
 			ed.buffer.MoveLeft()
 		}
 	case event.KeyRight:
-		if ed.mode != modeCommand && !ed.inExplorer {
+		if ed.mode != modeCommand && !ed.inExplorer && !ed.inChat {
 			ed.buffer.MoveRight()
 		}
 	case event.KeyBackspace:
-		if ed.mode == modeInsert {
+		if ed.mode == modeInsert && ed.inChat {
+			if len(ed.commandLine) > 0 {
+				ed.commandLine = ed.commandLine[:len(ed.commandLine)-1]
+			}
+		} else if ed.mode == modeInsert {
 			ed.buffer.DeleteBefore()
 		} else if ed.mode == modeCommand && len(ed.commandLine) > 0 {
 			ed.commandLine = ed.commandLine[:len(ed.commandLine)-1]
@@ -171,6 +181,12 @@ func (ed *Editor) handleKey(key event.Key) {
 			ed.executeCommand()
 			ed.mode = modeNormal
 			ed.commandLine = ed.commandLine[:0]
+		} else if ed.mode == modeInsert && ed.inChat {
+			if ed.chat != nil {
+				ed.chat.Submit(string(ed.commandLine))
+			}
+			ed.commandLine = ed.commandLine[:0]
+			ed.mode = modeNormal
 		} else if ed.mode == modeInsert {
 			ed.buffer.Newline()
 		} else if ed.inExplorer {
@@ -189,7 +205,9 @@ func (ed *Editor) handleKey(key event.Key) {
 func (ed *Editor) handleRune(r rune) {
 	switch ed.mode {
 	case modeInsert:
-		if !ed.inExplorer {
+		if ed.inChat {
+			ed.commandLine = append(ed.commandLine, r)
+		} else if !ed.inExplorer {
 			ed.buffer.InsertRune(r)
 		}
 	case modeCommand:
@@ -197,6 +215,8 @@ func (ed *Editor) handleRune(r rune) {
 	default:
 		if ed.inExplorer {
 			ed.applyExplorerCommand(r)
+		} else if ed.inChat {
+			ed.applyChatCommand(r)
 		} else {
 			ed.applyNormalCommand(r)
 		}
@@ -209,6 +229,17 @@ func (ed *Editor) applyExplorerCommand(r rune) {
 	switch r {
 	case ':':
 		ed.mode = modeCommand
+		ed.commandLine = ed.commandLine[:0]
+	}
+}
+
+func (ed *Editor) applyChatCommand(r rune) {
+	switch r {
+	case ':':
+		ed.mode = modeCommand
+		ed.commandLine = ed.commandLine[:0]
+	case 'i':
+		ed.mode = modeInsert
 		ed.commandLine = ed.commandLine[:0]
 	}
 }
@@ -267,6 +298,27 @@ func (ed *Editor) executeCommand() {
 		arg = strings.Join(parts[1:], " ")
 	}
 
+	if ed.inChat {
+		switch cmd {
+		case "q", "quit":
+			ed.inChat = false
+		case "accept":
+			if ed.chat != nil && ed.chat.Mode() == "IMPLEMENT" {
+				ed.chat.Accept()
+			}
+		case "reject":
+			if ed.chat != nil && ed.chat.Mode() == "IMPLEMENT" {
+				ed.chat.Reject()
+			}
+		case "chat":
+			ed.openChat("CHAT")
+		case "implement":
+			ed.openChat("IMPLEMENT")
+		}
+
+		return
+	}
+
 	switch cmd {
 	case "q", "quit":
 		ed.quitRequested = true
@@ -284,6 +336,10 @@ func (ed *Editor) executeCommand() {
 	case "E", "Ex", "Explore":
 		ed.explorer = NewExplorer(arg)
 		ed.inExplorer = true
+	case "chat":
+		ed.openChat("CHAT")
+	case "implement":
+		ed.openChat("IMPLEMENT")
 	}
 }
 
@@ -300,7 +356,18 @@ func (ed *Editor) render() {
 	cursorCol := ed.buffer.cursorCol
 	lines := ed.buffer.StringLines()
 
-	if ed.inExplorer && ed.explorer != nil {
+	if ed.inChat && ed.chat != nil {
+		lines = ed.chat.Lines()
+		maxLines := ed.buffer.height - 1
+		if maxLines > 0 && len(lines) > maxLines {
+			lines = lines[len(lines)-maxLines:]
+		}
+		cursorRow = len(lines) - 1
+		if cursorRow < 0 {
+			cursorRow = 0
+		}
+		cursorCol = 0
+	} else if ed.inExplorer && ed.explorer != nil {
 		lines = ed.explorer.Lines()
 		cursorRow = ed.explorer.Cursor()
 		cursorCol = 0
@@ -310,10 +377,16 @@ func (ed *Editor) render() {
 		cmdLine = ": " + string(ed.commandLine)
 		cursorRow = ed.buffer.height - 1
 		cursorCol = 2 + len(ed.commandLine)
+	} else if ed.mode == modeInsert && ed.inChat {
+		cmdLine = "> " + string(ed.commandLine)
+		cursorRow = ed.buffer.height - 1
+		cursorCol = 2 + len(ed.commandLine)
 	}
 
 	displayMode := ed.mode
-	if ed.inExplorer && displayMode == modeNormal {
+	if ed.inChat && ed.chat != nil && displayMode == modeNormal {
+		displayMode = ed.chat.Mode()
+	} else if ed.inExplorer && displayMode == modeNormal {
 		displayMode = "EXPLORER"
 	}
 
@@ -335,4 +408,31 @@ func (ed *Editor) render() {
 
 	ed.output = append(ed.output[:0], data...)
 	ed.readOff = 0
+}
+
+func (ed *Editor) openChat(mode string) {
+	if ed.chat == nil {
+		ed.chat = NewChat(ChatWithRoot(ed.workspaceRoot()))
+	}
+
+	ed.inChat = true
+	ed.inExplorer = false
+	ed.chat.SetMode(mode)
+}
+
+func (ed *Editor) workspaceRoot() string {
+	if ed.path == "" {
+		return "."
+	}
+
+	info, err := os.Stat(ed.path)
+	if err != nil {
+		return filepath.Dir(ed.path)
+	}
+
+	if info.IsDir() {
+		return ed.path
+	}
+
+	return filepath.Dir(ed.path)
 }
