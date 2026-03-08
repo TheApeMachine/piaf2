@@ -43,6 +43,19 @@ func (stub *stubProvider) Generate(_ context.Context, request *provider.Request)
 	return fmt.Sprintf("%s response %d", stub.name, index+1), nil
 }
 
+func (stub *stubProvider) GenerateStream(ctx context.Context, request *provider.Request, onChunk func(string)) (response string, err error) {
+	response, err = stub.Generate(ctx, request)
+	if err != nil {
+		return "", err
+	}
+
+	if onChunk != nil {
+		onChunk(response)
+	}
+
+	return response, nil
+}
+
 func TestChatSubmit(t *testing.T) {
 	convey.Convey("Given a Chat scoped to a workspace", t, func() {
 		root := t.TempDir()
@@ -63,9 +76,10 @@ func TestChatSubmit(t *testing.T) {
 			chat.Submit("browse .")
 
 			convey.Convey("It should add a full three-model pipeline to the transcript", func() {
-				transcript := strings.Join(chat.history, "\n")
+				lines := chat.Lines()
+				transcript := strings.Join(lines, "\n")
 
-				convey.So(chat.history, convey.ShouldHaveLength, 5)
+				convey.So(lines, convey.ShouldHaveLength, 5)
 				convey.So(transcript, convey.ShouldContainSubstring, "Pipeline:")
 				convey.So(transcript, convey.ShouldContainSubstring, "OpenAI GPT-5.4")
 				convey.So(transcript, convey.ShouldContainSubstring, "Claude Open 4.6")
@@ -129,7 +143,7 @@ func TestChatImplementMode(t *testing.T) {
 			chat.Submit("add a command palette")
 
 			convey.Convey("It should end with accept and reject guidance", func() {
-				transcript := strings.Join(chat.history, "\n")
+				transcript := strings.Join(chat.Lines(), "\n")
 				convey.So(transcript, convey.ShouldContainSubstring, "Accept with :accept or :reject.")
 			})
 		})
@@ -151,7 +165,9 @@ func BenchmarkChatSubmit(b *testing.B) {
 	)
 
 	for b.Loop() {
+		chat.mu.Lock()
 		chat.history = nil
+		chat.mu.Unlock()
 		chat.Submit("read note.txt")
 	}
 }

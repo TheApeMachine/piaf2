@@ -8,6 +8,7 @@ import (
 
 	"github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/piaf/event"
+	"github.com/theapemachine/piaf/wire"
 )
 
 func encodeRune(r rune) []byte {
@@ -257,8 +258,11 @@ func TestEditorCommandMode(t *testing.T) {
 			ed.Write(encodeRune('q'))
 			ed.Write(encodeSpecial(event.KeyEnter))
 
-			convey.Convey("It should set QuitRequested", func() {
-				convey.So(ed.QuitRequested(), convey.ShouldBeTrue)
+			convey.Convey("It should set quit in the wire Frame", func() {
+				frameBytes, _ := io.ReadAll(ed)
+				frame := &wire.Frame{}
+				frame.Write(frameBytes)
+				convey.So(frame.Quit, convey.ShouldBeTrue)
 			})
 		})
 
@@ -304,6 +308,7 @@ func TestEditorCommandMode(t *testing.T) {
 
 func TestEditorChatFlow(t *testing.T) {
 	convey.Convey("Given an Editor in the chat window", t, func() {
+		submitDone := make(chan struct{})
 		ed := NewEditor(EditorWithSize(80, 12))
 		ed.chat = NewChat(
 			ChatWithRandom(rand.New(rand.NewSource(7))),
@@ -312,6 +317,7 @@ func TestEditorChatFlow(t *testing.T) {
 				&stubProvider{name: "Claude Open 4.6", responses: []string{"second response"}},
 				&stubProvider{name: "Gemini Pro 3.1", responses: []string{"third response"}},
 			),
+			ChatWithOnComplete(func() { close(submitDone) }),
 		)
 		ed.openChat("CHAT")
 
@@ -322,8 +328,10 @@ func TestEditorChatFlow(t *testing.T) {
 			}
 			ed.Write(encodeSpecial(event.KeyEnter))
 
+			<-submitDone
+
 			convey.Convey("It should keep the transcript in chat history", func() {
-				transcript := strings.Join(ed.chat.history, "\n")
+				transcript := strings.Join(ed.chat.Lines(), "\n")
 				convey.So(ed.mode, convey.ShouldEqual, modeNormal)
 				convey.So(transcript, convey.ShouldContainSubstring, "You: browse .")
 				convey.So(transcript, convey.ShouldContainSubstring, "Pipeline:")
@@ -338,7 +346,10 @@ func TestEditorChatFlow(t *testing.T) {
 
 			convey.Convey("It should close chat without quitting the editor", func() {
 				convey.So(ed.inChat, convey.ShouldBeFalse)
-				convey.So(ed.QuitRequested(), convey.ShouldBeFalse)
+				frameBytes, _ := io.ReadAll(ed)
+				frame := &wire.Frame{}
+				frame.Write(frameBytes)
+				convey.So(frame.Quit, convey.ShouldBeFalse)
 			})
 		})
 	})
@@ -346,6 +357,7 @@ func TestEditorChatFlow(t *testing.T) {
 
 func TestEditorImplementAccept(t *testing.T) {
 	convey.Convey("Given an Editor in implementation mode", t, func() {
+		submitDone := make(chan struct{})
 		ed := NewEditor(EditorWithSize(80, 12))
 		ed.chat = NewChat(
 			ChatWithRandom(rand.New(rand.NewSource(11))),
@@ -354,6 +366,7 @@ func TestEditorImplementAccept(t *testing.T) {
 				&stubProvider{name: "Claude Open 4.6", responses: []string{"prepared the diff"}},
 				&stubProvider{name: "Gemini Pro 3.1", responses: []string{"final implementation summary"}},
 			),
+			ChatWithOnComplete(func() { close(submitDone) }),
 		)
 		ed.openChat("IMPLEMENT")
 
@@ -363,6 +376,7 @@ func TestEditorImplementAccept(t *testing.T) {
 				ed.Write(encodeRune(r))
 			}
 			ed.Write(encodeSpecial(event.KeyEnter))
+			<-submitDone
 			ed.Write(encodeRune(':'))
 			for _, r := range "accept" {
 				ed.Write(encodeRune(r))
@@ -370,7 +384,7 @@ func TestEditorImplementAccept(t *testing.T) {
 			ed.Write(encodeSpecial(event.KeyEnter))
 
 			convey.Convey("It should record the review result", func() {
-				transcript := strings.Join(ed.chat.history, "\n")
+				transcript := strings.Join(ed.chat.Lines(), "\n")
 				convey.So(transcript, convey.ShouldContainSubstring, "Accept with :accept or :reject.")
 				convey.So(transcript, convey.ShouldContainSubstring, "implementation proposal accepted")
 			})

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/theapemachine/piaf/provider"
@@ -18,12 +19,16 @@ Chat renders the multi-model discussion and implementation transcript.
 It keeps a running context and can inspect files inside the workspace.
 */
 type Chat struct {
-	root      string
-	mode      string
-	history   []string
-	random    *rand.Rand
-	timeout   time.Duration
-	providers []provider.Provider
+	root         string
+	mode         string
+	history      []string
+	mu           sync.Mutex
+	onStream     func()
+	onComplete   func()
+	random       *rand.Rand
+	systemPrompt string
+	timeout      time.Duration
+	providers    []provider.Provider
 }
 
 /*
@@ -102,6 +107,34 @@ func ChatWithProviders(providers ...provider.Provider) chatOpts {
 }
 
 /*
+ChatWithOnStream registers a callback invoked when streaming produces new content.
+*/
+func ChatWithOnStream(onStream func()) chatOpts {
+	return func(chat *Chat) {
+		chat.onStream = onStream
+	}
+}
+
+/*
+ChatWithOnComplete registers a callback invoked when Submit finishes all providers.
+*/
+func ChatWithOnComplete(onComplete func()) chatOpts {
+	return func(chat *Chat) {
+		chat.onComplete = onComplete
+	}
+}
+
+/*
+ChatWithSystemPrompt sets the system prompt for provider requests.
+When non-empty, overrides the default BuildSystemPrompt for the current mode.
+*/
+func ChatWithSystemPrompt(prompt string) chatOpts {
+	return func(chat *Chat) {
+		chat.systemPrompt = strings.TrimSpace(prompt)
+	}
+}
+
+/*
 Mode returns the current chat mode name.
 */
 func (chat *Chat) Mode() string {
@@ -116,6 +149,7 @@ func (chat *Chat) SetMode(mode string) {
 		return
 	}
 
+	chat.mu.Lock()
 	chat.mode = mode
 
 	switch mode {
@@ -127,10 +161,12 @@ func (chat *Chat) SetMode(mode string) {
 	default:
 		chat.history = append(chat.history, "System: discussion mode engaged.")
 	}
+	chat.mu.Unlock()
 }
 
 /*
-Submit adds a user message and the three randomized model responses.
+Submit adds a user message and streams the three randomized model responses.
+Runs asynchronously; onStream is invoked as each chunk arrives.
 */
 func (chat *Chat) Submit(message string) {
 	message = strings.TrimSpace(message)
@@ -141,6 +177,7 @@ func (chat *Chat) Submit(message string) {
 	order := chat.randomizedModels()
 	toolOutput := chat.toolOutput(message)
 
+	chat.mu.Lock()
 	chat.history = append(chat.history, "You: "+message)
 	names := make([]string, 0, len(order))
 	for _, current := range order {
@@ -148,33 +185,64 @@ func (chat *Chat) Submit(message string) {
 	}
 
 	chat.history = append(chat.history, "Pipeline: "+strings.Join(names, " -> "))
-
 	transcript := append([]string(nil), chat.history...)
+	chat.mu.Unlock()
+
 	responses := make([]string, 0, len(order))
 
 	for index, current := range order {
+		chat.mu.Lock()
+		chat.history = append(chat.history, current.Name()+": ")
+		transcript = append(transcript, chat.history[len(chat.history)-1])
+		chat.mu.Unlock()
+
+		systemPrompt := ""
+		if chat.mode == "CHAT" {
+			systemPrompt = chat.systemPrompt
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), chat.timeout)
-		response, err := current.Generate(ctx, &provider.Request{
+		response, err := current.GenerateStream(ctx, &provider.Request{
 			Mode:          chat.mode,
 			Message:       message,
 			ToolOutput:    toolOutput,
 			Transcript:    transcript,
 			PriorResponse: responses,
+			SystemPrompt:  systemPrompt,
+		}, func(chunk string) {
+			chat.mu.Lock()
+			last := len(chat.history) - 1
+			if last >= 0 {
+				chat.history[last] += chunk
+				if chat.onStream != nil {
+					chat.onStream()
+				}
+			}
+			chat.mu.Unlock()
 		})
 		cancel()
 
+		chat.mu.Lock()
+		last := len(chat.history) - 1
 		if err != nil {
-			response = "Provider error: " + err.Error()
+			chat.history[last] = current.Name() + ": \033[31mError:\033[0m " + err.Error()
+		} else {
+			if chat.mode == "IMPLEMENT" && index == len(order)-1 && !strings.Contains(strings.ToLower(response), "accept") {
+				chat.history[last] += "\nAccept with :accept or :reject."
+			}
 		}
-
-		if chat.mode == "IMPLEMENT" && index == len(order)-1 && !strings.Contains(strings.ToLower(response), "accept") {
-			response += "\nAccept with :accept or :reject."
-		}
-
-		line := current.Name() + ": " + response
-		chat.history = append(chat.history, line)
+		line := chat.history[last]
 		transcript = append(transcript, line)
+		chat.mu.Unlock()
+
 		responses = append(responses, line)
+		if chat.onStream != nil {
+			chat.onStream()
+		}
+	}
+
+	if chat.onComplete != nil {
+		chat.onComplete()
 	}
 }
 
@@ -182,20 +250,27 @@ func (chat *Chat) Submit(message string) {
 Accept marks the current implementation proposal as accepted.
 */
 func (chat *Chat) Accept() {
+	chat.mu.Lock()
 	chat.history = append(chat.history, "System: implementation proposal accepted.")
+	chat.mu.Unlock()
 }
 
 /*
 Reject marks the current implementation proposal as rejected.
 */
 func (chat *Chat) Reject() {
+	chat.mu.Lock()
 	chat.history = append(chat.history, "System: implementation proposal rejected.")
+	chat.mu.Unlock()
 }
 
 /*
 Lines returns the transcript for rendering.
 */
 func (chat *Chat) Lines() []string {
+	chat.mu.Lock()
+	defer chat.mu.Unlock()
+
 	if len(chat.history) > 0 {
 		return append([]string(nil), chat.history...)
 	}

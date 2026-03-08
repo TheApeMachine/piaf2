@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -100,7 +101,7 @@ func (provider *OpenAIProvider) Generate(ctx context.Context, request *Request) 
 	}
 
 	if httpResponse.StatusCode >= http.StatusBadRequest {
-		return "", fmt.Errorf("%s request failed: %s", provider.Name(), strings.TrimSpace(string(responseBody)))
+		return "", fmt.Errorf("%s: %s", provider.Name(), parseAPIError(responseBody))
 	}
 
 	var decoded struct {
@@ -120,4 +121,94 @@ func (provider *OpenAIProvider) Generate(ctx context.Context, request *Request) 
 	}
 
 	return strings.TrimSpace(decoded.Choices[0].Message.Content), nil
+}
+
+/*
+GenerateStream performs a streaming chat completion request.
+*/
+func (provider *OpenAIProvider) GenerateStream(ctx context.Context, request *Request, onChunk func(string)) (response string, err error) {
+	if provider.apiKey == "" {
+		return "", fmt.Errorf("%s is not configured: missing OPENAI_API_KEY", provider.Name())
+	}
+
+	payload := map[string]any{
+		"stream": true,
+		"model":  provider.model,
+		"messages": []map[string]string{
+			{
+				"role":    "system",
+				"content": BuildSystemPrompt(request),
+			},
+			{
+				"role":    "user",
+				"content": BuildUserPrompt(request),
+			},
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, provider.baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+
+	httpRequest.Header.Set("Authorization", "Bearer "+provider.apiKey)
+	httpRequest.Header.Set("Content-Type", "application/json")
+
+	httpResponse, err := provider.client.Do(httpRequest)
+	if err != nil {
+		return "", err
+	}
+	defer httpResponse.Body.Close()
+
+	if httpResponse.StatusCode >= http.StatusBadRequest {
+		responseBody, _ := io.ReadAll(httpResponse.Body)
+		return "", fmt.Errorf("%s: %s", provider.Name(), parseAPIError(responseBody))
+	}
+
+	var full strings.Builder
+	scanner := bufio.NewScanner(httpResponse.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		payload := strings.TrimPrefix(line, "data: ")
+		if payload == "[DONE]" {
+			break
+		}
+
+		var decoded struct {
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+
+		if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+			continue
+		}
+
+		if len(decoded.Choices) > 0 && decoded.Choices[0].Delta.Content != "" {
+			chunk := decoded.Choices[0].Delta.Content
+			full.WriteString(chunk)
+			if onChunk != nil {
+				onChunk(chunk)
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return full.String(), err
+	}
+
+	return strings.TrimSpace(full.String()), nil
 }

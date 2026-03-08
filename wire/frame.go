@@ -18,6 +18,7 @@ type Frame struct {
 	Width       uint32
 	Height      uint32
 	CommandLine string
+	Quit        bool
 
 	readBuf    []byte
 	readOffset int
@@ -65,6 +66,12 @@ func (frame *Frame) Read(p []byte) (n int, err error) {
 		binary.LittleEndian.PutUint32(buf, uint32(len(frame.CommandLine)))
 		frame.readBuf = append(frame.readBuf, buf...)
 		frame.readBuf = append(frame.readBuf, frame.CommandLine...)
+
+		if frame.Quit {
+			frame.readBuf = append(frame.readBuf, 1)
+		} else {
+			frame.readBuf = append(frame.readBuf, 0)
+		}
 
 		frame.readOffset = 0
 
@@ -151,6 +158,11 @@ func (frame *Frame) Write(p []byte) (n int, err error) {
 	}
 
 	frame.CommandLine = string(p[offset : offset+int(cmdLen)])
+	offset += int(cmdLen)
+
+	if offset < len(p) {
+		frame.Quit = p[offset] != 0
+	}
 
 	frame.readBuf = nil
 	frame.readOffset = 0

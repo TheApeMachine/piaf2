@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"embed"
 	"io"
 	"os"
 
@@ -10,6 +11,14 @@ import (
 	"github.com/theapemachine/piaf/editor"
 	"github.com/theapemachine/piaf/tui"
 )
+
+/*
+Embed a mini filesystem into the binary to hold the default config file.
+This will be written to the home directory of the user running the service,
+which allows a developer to easily override the config file.
+*/
+//go:embed cfg/*
+var embedded embed.FS
 
 /*
 Root command definition.
@@ -39,36 +48,46 @@ var rootCmd = &cobra.Command{
 			path = args[0]
 		}
 
+		config, _ := Load(embedded)
+		systemPrompt := ""
+		if config != nil {
+			systemPrompt = config.AI.Persona.Research.Manager
+		}
+
+		streamCh := make(chan struct{}, 16)
+		quitRead, quitWrite := io.Pipe()
 		ed := editor.NewEditor(
 			editor.EditorWithSize(width, height),
 			editor.EditorWithPath(path),
+			editor.EditorWithStreamUpdates(streamCh),
+			editor.EditorWithSystemPrompt(systemPrompt),
 		)
-		app := tui.NewApp(tui.AppWithEditor(ed))
+		mux := tui.NewInputMux(
+			tui.InputMuxWithStdin(os.Stdin),
+			tui.InputMuxWithRefresh(streamCh),
+			tui.InputMuxWithQuit(quitRead),
+		)
+		app := tui.NewApp(tui.AppWithEditor(ed), tui.AppWithQuitWriter(quitWrite))
 		defer app.Close()
 
 		buf := make([]byte, 256)
-
 		io.Copy(os.Stdout, app)
 
 		for {
-			count, readErr := os.Stdin.Read(buf)
-
-			if count > 0 {
-				if bytes.Contains(buf[:count], []byte{0x03}) {
-					break
-				}
-
-				app.Write(buf[:count])
-				io.Copy(os.Stdout, app)
-
-				if app.QuitRequested() {
-					break
-				}
-			}
-
+			count, readErr := mux.Read(buf)
 			if readErr != nil {
-				break
+				return
 			}
+			if count > 0 {
+				if buf[0] == tui.SentinelQuit {
+					return
+				}
+				if buf[0] != tui.SentinelRefresh && bytes.Contains(buf[:count], []byte{0x03}) {
+					return
+				}
+				app.Write(buf[:count])
+			}
+			io.Copy(os.Stdout, app)
 		}
 	},
 }

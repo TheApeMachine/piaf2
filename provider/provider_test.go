@@ -12,6 +12,38 @@ import (
 	"github.com/smartystreets/goconvey/convey"
 )
 
+func TestParseAPIError(t *testing.T) {
+	convey.Convey("Given API error JSON", t, func() {
+		convey.Convey("When body has error.message and error.code", func() {
+			body := []byte(`{"error":{"code":404,"message":"models/gemini-pro-3.1 is not found for API version v1beta","status":"NOT_FOUND"}}`)
+			convey.Convey("It should return a single-line message with code prefix", func() {
+				convey.So(parseAPIError(body), convey.ShouldEqual, "404: models/gemini-pro-3.1 is not found for API version v1beta")
+			})
+		})
+
+		convey.Convey("When body has error.message and string code", func() {
+			body := []byte(`{"error":{"message":"Project does not have access to model","code":"model_not_found"}}`)
+			convey.Convey("It should return message with code prefix", func() {
+				convey.So(parseAPIError(body), convey.ShouldEqual, "model_not_found: Project does not have access to model")
+			})
+		})
+
+		convey.Convey("When body is not valid JSON", func() {
+			body := []byte("plain text error")
+			convey.Convey("It should return truncated raw", func() {
+				convey.So(parseAPIError(body), convey.ShouldEqual, "plain text error")
+			})
+		})
+
+		convey.Convey("When body has newlines in JSON", func() {
+			body := []byte("{\"error\":{\"message\":\"not configured\"}}\n")
+			convey.Convey("It should return clean message", func() {
+				convey.So(parseAPIError(body), convey.ShouldEqual, "not configured")
+			})
+		})
+	})
+}
+
 func TestOpenAIProviderGenerate(t *testing.T) {
 	convey.Convey("Given an OpenAIProvider", t, func() {
 		var path string
