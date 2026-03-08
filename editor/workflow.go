@@ -6,6 +6,8 @@ import (
 	"sync"
 )
 
+var workflowMessageReplacer = strings.NewReplacer("\n", ",", ";", ",", " and ", ",")
+
 /*
 Workflow tracks the implementation board, communication channel, and progress.
 */
@@ -91,7 +93,8 @@ func (workflow *Workflow) ReportProgress(agent string, status string) string {
 	workflow.mu.Lock()
 	defer workflow.mu.Unlock()
 
-	line := fmt.Sprintf("Progress: %s %s.", agent, strings.TrimSuffix(status, "."))
+	status = strings.TrimSpace(strings.TrimSuffix(status, "."))
+	line := fmt.Sprintf("Progress: %s %s.", agent, status)
 	workflow.progress = append(workflow.progress, line)
 
 	return line
@@ -174,8 +177,7 @@ func workflowDeveloperTasks(board []string) []string {
 }
 
 func splitWorkflowMessage(message string) []string {
-	replacer := strings.NewReplacer("\n", ",", ";", ",", " and ", ",")
-	parts := strings.Split(replacer.Replace(strings.TrimSpace(message)), ",")
+	parts := strings.Split(workflowMessageReplacer.Replace(strings.TrimSpace(message)), ",")
 	seen := map[string]struct{}{}
 	tasks := make([]string, 0, len(parts))
 
@@ -305,7 +307,7 @@ func (memory *AgentMemory) Forget(filter string) int {
 
 	removed := 0
 
-	nextShared := memory.shared[:0]
+	nextShared := make([]string, 0, len(memory.shared))
 	for _, entry := range memory.shared {
 		if strings.Contains(strings.ToLower(entry), filter) {
 			removed++
@@ -314,10 +316,10 @@ func (memory *AgentMemory) Forget(filter string) int {
 
 		nextShared = append(nextShared, entry)
 	}
-	memory.shared = append([]string(nil), nextShared...)
+	memory.shared = nextShared
 
 	for agent, entries := range memory.agents {
-		nextEntries := entries[:0]
+		nextEntries := make([]string, 0, len(entries))
 		for _, entry := range entries {
 			if strings.Contains(strings.ToLower(entry), filter) {
 				removed++
@@ -332,7 +334,7 @@ func (memory *AgentMemory) Forget(filter string) int {
 			continue
 		}
 
-		memory.agents[agent] = append([]string(nil), nextEntries...)
+		memory.agents[agent] = nextEntries
 	}
 
 	return removed

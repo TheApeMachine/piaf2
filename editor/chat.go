@@ -14,6 +14,13 @@ import (
 	"github.com/theapemachine/piaf/provider"
 )
 
+const (
+	projectManagerProviderOffset = 0
+	teamLeadProviderOffset       = 1
+	developerProviderOffset      = 2
+	reviewProviderOffset         = 3
+)
+
 /*
 Chat renders the multi-model discussion and implementation transcript.
 It keeps a running context and can inspect files inside the workspace.
@@ -333,7 +340,7 @@ func (chat *Chat) submitImplementation(message string) {
 	transcript := chat.snapshot()
 	responses := []string{}
 
-	projectManager := order[0]
+	projectManager := order[projectManagerProviderOffset]
 	projectRequest := chat.implementationRequest("Project Manager", message, baseToolOutput, "Break the request into a concise project board, capture risks, and preserve context for the rest of the team.", transcript, responses)
 	line, response := chat.runStage("Project Manager ["+projectManager.Name()+"]", projectManager, projectRequest)
 	transcript = append(transcript, line)
@@ -341,7 +348,7 @@ func (chat *Chat) submitImplementation(message string) {
 	chat.memory.RememberAgent("Project Manager", response)
 	chat.memory.RememberShared("Project board prepared for: " + message)
 
-	teamLead := order[1%len(order)]
+	teamLead := order[teamLeadProviderOffset%len(order)]
 	developerTasks := chat.workflow.DeveloperTasks()
 	developerCount := len(developerTasks)
 	if developerCount == 0 {
@@ -368,7 +375,7 @@ func (chat *Chat) submitImplementation(message string) {
 			chat.appendHistory(channel)
 		}
 
-		developer := order[(index+2)%len(order)]
+		developer := order[chat.providerIndex(index, developerProviderOffset, len(order))]
 		label := fmt.Sprintf("Developer %d [%s]", index+1, developer.Name())
 		detail := fmt.Sprintf("Implement %s. Report progress back to the chat and mention any files or tests that need review.", task)
 		developerRequest := chat.implementationRequest(fmt.Sprintf("Developer %d", index+1), message, baseToolOutput, detail, transcript, responses)
@@ -380,7 +387,7 @@ func (chat *Chat) submitImplementation(message string) {
 		chat.appendHistory(chat.workflow.ReportProgress(fmt.Sprintf("Developer %d", index+1), "reported implementation progress to the chat"))
 	}
 
-	qaProvider := order[(developerCount+2)%len(order)]
+	qaProvider := order[chat.providerIndex(developerCount, developerProviderOffset, len(order))]
 	qaRequest := chat.implementationRequest("QA", message, baseToolOutput, "Write the unit and integration test strategy, review the implementation quality, and start with `Decision: PASS` or `Decision: REWORK`.", transcript, responses)
 	line, response = chat.runStage("QA ["+qaProvider.Name()+"]", qaProvider, qaRequest)
 	transcript = append(transcript, line)
@@ -392,7 +399,7 @@ func (chat *Chat) submitImplementation(message string) {
 	if decision == "REWORK" {
 		chat.appendHistory(chat.workflow.RequestRework(response))
 		for index, task := range developerTasks {
-			developer := order[(index+2)%len(order)]
+			developer := order[chat.providerIndex(index, developerProviderOffset, len(order))]
 			label := fmt.Sprintf("Developer %d [%s]", index+1, developer.Name())
 			detail := fmt.Sprintf("Address the QA findings while updating %s. Confirm the revised intent and the tests you touched.", task)
 			developerRequest := chat.implementationRequest(fmt.Sprintf("Developer %d", index+1), message, baseToolOutput, detail, transcript, responses)
@@ -413,7 +420,7 @@ func (chat *Chat) submitImplementation(message string) {
 
 	chat.appendHistory(chat.workflow.SetReview(decision))
 
-	reviewProvider := order[(developerCount+3)%len(order)]
+	reviewProvider := order[chat.providerIndex(developerCount, reviewProviderOffset, len(order))]
 	reviewRequest := chat.implementationRequest("Review", message, baseToolOutput, "Summarize the project board, communication channel status, memory, and review outcome. End with `Accept with :accept or :reject.`", transcript, responses)
 	line, response = chat.runStage("Review ["+reviewProvider.Name()+"]", reviewProvider, reviewRequest)
 	if !strings.Contains(strings.ToLower(response), "accept") {
@@ -541,6 +548,14 @@ func (chat *Chat) qaDecision(response string) string {
 	}
 
 	return "PASS"
+}
+
+func (chat *Chat) providerIndex(position int, offset int, total int) int {
+	if total == 0 {
+		return 0
+	}
+
+	return (position + offset) % total
 }
 
 func (chat *Chat) remember(target string) string {
