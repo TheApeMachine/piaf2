@@ -62,9 +62,9 @@ func (provider *ClaudeProvider) Generate(ctx context.Context, request *Request) 
 	}
 
 	payload := map[string]any{
-		"model":       provider.model,
-		"max_tokens":  2048,
-		"system":      BuildSystemPrompt(request),
+		"model":      provider.model,
+		"max_tokens": 2048,
+		"system":     BuildSystemPrompt(request),
 		"messages": []map[string]string{
 			{
 				"role":    "user",
