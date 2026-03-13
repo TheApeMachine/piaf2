@@ -366,6 +366,7 @@ func (backend *chatToolBackend) Read(path string) string      { return backend.c
 func (backend *chatToolBackend) Remember(content string) string { return backend.chat.remember(content) }
 func (backend *chatToolBackend) Recall(filter string) string  { return backend.chat.recall(filter) }
 func (backend *chatToolBackend) Forget(filter string) string  { return backend.chat.forget(filter) }
+func (backend *chatToolBackend) Search(query, target string) string { return backend.chat.search(query, target) }
 
 func (chat *Chat) submitDiscussion(message string) {
 	order := chat.randomizedModels()
@@ -935,13 +936,49 @@ func (chat *Chat) recall(target string) string {
 	return "Memory recall:\n" + strings.Join(lines, "\n")
 }
 
-func (chat *Chat) forget(target string) string {
-	removed := chat.memory.Forget(target)
-	if removed == 0 {
-		return "Memory forget: no matches."
+func (chat *Chat) forget(filter string) string {
+	chat.memory.Forget(filter)
+	return fmt.Sprintf("System: Memory items matching '%s' erased.", filter)
+}
+
+func (chat *Chat) search(query, target string) string {
+	resolved, allowed := chat.resolve(target)
+	if !allowed {
+		return "Tool search blocked: path escapes the workspace."
 	}
 
-	return fmt.Sprintf("Memory forget removed %d entrie(s).", removed)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Try git grep first for speed, ignoring .git directory entirely
+	cmdGit := exec.CommandContext(ctx, "git", "grep", "-I", "-n", query)
+	cmdGit.Dir = resolved
+	if out, err := cmdGit.CombinedOutput(); err == nil {
+		res := string(out)
+		if len(res) > 4000 {
+			res = res[:4000] + "\n... (truncated to 4000 characters)"
+		}
+		if len(res) == 0 {
+			return "Search returned 0 results."
+		}
+		return res
+	}
+
+	// Fallback to standard grep
+	cmdGrep := exec.CommandContext(ctx, "grep", "-rn", query, resolved)
+	outGrep, errGrep := cmdGrep.CombinedOutput()
+	if errGrep != nil && len(outGrep) == 0 {
+		return "Search found nothing or failed."
+	}
+
+	res := string(outGrep)
+	if len(res) > 4000 {
+		res = res[:4000] + "\n... (truncated to 4000 characters)"
+	}
+	if len(res) == 0 {
+		return "Search returned 0 results."
+	}
+	return res
 }
 
 func (chat *Chat) browse(target string) string {
