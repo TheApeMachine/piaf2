@@ -345,7 +345,7 @@ func (chat *Chat) toolOutput(message string) string {
 	case "browse", "list", "ls":
 		return chat.browse(target)
 	case "read", "open", "cat":
-		return chat.read(target)
+		return chat.read(target, 0, 0)
 	case "remember", "memo":
 		return chat.remember(target)
 	case "recall", "memory":
@@ -362,7 +362,9 @@ type chatToolBackend struct {
 }
 
 func (backend *chatToolBackend) Browse(path string) string   { return backend.chat.browse(path) }
-func (backend *chatToolBackend) Read(path string) string      { return backend.chat.read(path) }
+func (backend *chatToolBackend) Read(path string, start, end int) string {
+	return backend.chat.read(path, start, end)
+}
 func (backend *chatToolBackend) Remember(content string) string { return backend.chat.remember(content) }
 func (backend *chatToolBackend) Recall(filter string) string  { return backend.chat.recall(filter) }
 func (backend *chatToolBackend) Forget(filter string) string  { return backend.chat.forget(filter) }
@@ -1012,7 +1014,7 @@ func (chat *Chat) browse(target string) string {
 	return strings.Join(lines, "\n")
 }
 
-func (chat *Chat) read(target string) string {
+func (chat *Chat) read(target string, start, end int) string {
 	resolved, allowed := chat.resolve(target)
 	if !allowed {
 		return "Tool read blocked: path escapes the workspace."
@@ -1033,15 +1035,28 @@ func (chat *Chat) read(target string) string {
 	}
 
 	lines := strings.Split(string(data), "\n")
-	if len(lines) > 2000 {
-		truncated := len(lines) - 2000
-		lines = lines[:2000]
-		lines = append(lines, fmt.Sprintf("... (truncated %d lines)", truncated))
+
+	if start <= 0 {
+		start = 1 // 1-indexed
+	}
+	if end <= 0 || end > len(lines) {
+		end = len(lines)
+	}
+	if start > len(lines) {
+		return "Tool read failed: start_line is beyond EOF."
 	}
 
-	result := []string{"Tool read " + chat.relative(resolved)}
-	for index, line := range lines {
-		result = append(result, fmt.Sprintf("%d %s", index+1, line))
+	sliced := lines[start-1 : end]
+
+	if len(sliced) > 2000 {
+		truncated := len(sliced) - 2000
+		sliced = sliced[:2000]
+		sliced = append(sliced, fmt.Sprintf("... (truncated %d lines)", truncated))
+	}
+
+	result := []string{"Tool read " + chat.relative(resolved) + fmt.Sprintf(" (lines %d-%d)", start, end)}
+	for index, line := range sliced {
+		result = append(result, fmt.Sprintf("%d %s", start+index, line))
 	}
 
 	return strings.Join(result, "\n")
