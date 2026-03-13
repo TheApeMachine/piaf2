@@ -1,14 +1,50 @@
 {
-  "shared": null,
+  "shared": [
+    "Project board prepared for: add a command palette",
+    "scoped the request",
+    "Claude Open 4.6 response 2",
+    "Gemini Pro 3.1 response 2",
+    "keep tests focused"
+  ],
   "agents": {
+    "Architect": [
+      "prepared the diff"
+    ],
+    "Developer 1": [
+      "Gemini Pro 3.1 response 2"
+    ],
+    "Developer 2": [
+      "Claude Open 4.6 response 2"
+    ],
     "Discussion Claude Open 4.6": [
-      "second response"
+      "second response",
+      "Claude Open 4.6 response 4",
+      "tracked",
+      "confirmed"
     ],
     "Discussion Gemini Pro 3.1": [
-      "third response"
+      "third response",
+      "Gemini Pro 3.1 response 5",
+      "stored",
+      "shared"
     ],
     "Discussion OpenAI GPT-5.4": [
-      "first response"
+      "first response",
+      "OpenAI GPT-5.4 response 2",
+      "remembered",
+      "recalled"
+    ],
+    "Project Manager": [
+      "final implementation summary"
+    ],
+    "QA": [
+      "Gemini Pro 3.1 response 3"
+    ],
+    "Review": [
+      "Claude Open 4.6 response 3"
+    ],
+    "Team Lead": [
+      "scoped the request"
     ]
   }
 }
