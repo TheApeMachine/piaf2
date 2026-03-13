@@ -977,8 +977,10 @@ func (chat *Chat) read(target string) string {
 	}
 
 	lines := strings.Split(string(data), "\n")
-	if len(lines) > 12 {
-		lines = lines[:12]
+	if len(lines) > 2000 {
+		truncated := len(lines) - 2000
+		lines = lines[:2000]
+		lines = append(lines, fmt.Sprintf("... (truncated %d lines)", truncated))
 	}
 
 	result := []string{"Tool read " + chat.relative(resolved)}
