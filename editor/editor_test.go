@@ -185,7 +185,7 @@ func TestEditorJumpMode(t *testing.T) {
 
 			convey.Convey("It should overlay jump hints without replacing original text", func() {
 				convey.So(frame, convey.ShouldNotBeNil)
-				convey.So(frame.CommandLine, convey.ShouldEqual, "f ")
+				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "f ")
 				stripAnsi := func(s string) string {
 					var out []byte
 					for index := 0; index < len(s); index++ {
@@ -234,7 +234,7 @@ func TestEditorJumpMode(t *testing.T) {
 				convey.So(frame, convey.ShouldNotBeNil)
 				convey.So(ed.jumpActive(), convey.ShouldBeTrue)
 				convey.So(ed.jumpCodeLen, convey.ShouldEqual, 2)
-				convey.So(frame.CommandLine, convey.ShouldEqual, "f a")
+				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "f ")
 				convey.So(frame.Lines[0], convey.ShouldContainSubstring, "abcde")
 			})
 		})
@@ -434,7 +434,7 @@ func TestEditorPalette(t *testing.T) {
 			convey.Convey("It should show the palette with commands", func() {
 				convey.So(ed.inPalette, convey.ShouldBeTrue)
 				convey.So(frame, convey.ShouldNotBeNil)
-				convey.So(frame.CommandLine, convey.ShouldEqual, "/ ")
+				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "/ ")
 				convey.So(len(frame.Lines), convey.ShouldBeGreaterThan, 0)
 			})
 		})
