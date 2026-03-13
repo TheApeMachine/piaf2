@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/theapemachine/piaf/event"
@@ -30,9 +31,11 @@ type Editor struct {
 	chat          *Chat
 	explorer      *Explorer
 	palette       *Palette
+	kanbanView    *KanbanView
 	inChat        bool
 	inExplorer    bool
 	inPalette     bool
+	inKanban      bool
 	path          string
 	mode          string
 	commandLine   []rune
@@ -44,12 +47,19 @@ type Editor struct {
 	readOff       int
 	streamUpdates chan struct{}
 	systemPrompt  string
+	swallowSpace  bool
+	pendingSpace  bool
+	chatTimeout   time.Duration
+	chatDumpPath  string
 }
 
 /*
-editorOpts configures Editor with options.
+EditorOpt is an option for configuring the Editor.
+Exported so callers can build option slices (e.g. from config).
 */
-type editorOpts func(*Editor)
+type EditorOpt func(*Editor)
+
+type editorOpts = EditorOpt
 
 /*
 NewEditor instantiates a new Editor in normal mode.
@@ -76,6 +86,27 @@ func EditorWithSize(width, height int) editorOpts {
 	return func(ed *Editor) {
 		ed.buffer.width = width
 		ed.buffer.height = height
+	}
+}
+
+/*
+EditorWithChatDumpPath appends all chat model output (discussion + implementation) to the given file.
+*/
+func EditorWithChatDumpPath(path string) editorOpts {
+	return func(ed *Editor) {
+		ed.chatDumpPath = strings.TrimSpace(path)
+	}
+}
+
+/*
+EditorWithChatTimeout sets the per-stage timeout for chat API calls.
+Override when tool-heavy rounds need more than the default 180s.
+*/
+func EditorWithChatTimeout(timeout time.Duration) editorOpts {
+	return func(ed *Editor) {
+		if timeout > 0 {
+			ed.chatTimeout = timeout
+		}
 	}
 }
 
@@ -145,8 +176,24 @@ func (ed *Editor) Write(p []byte) (n int, err error) {
 		offset += size
 
 		if isRune {
-			ed.handleRune(runeVal)
+			if ed.swallowSpace && runeVal == ' ' {
+				ed.swallowSpace = false
+			} else {
+				ed.swallowSpace = false
+				if ed.pendingSpace {
+					ed.handleRune(' ')
+					ed.pendingSpace = false
+				}
+				if runeVal == ' ' {
+					ed.pendingSpace = true
+				} else {
+					ed.handleRune(runeVal)
+				}
+			}
 		} else {
+			if ed.pendingSpace && key == event.KeyBackspace {
+				ed.pendingSpace = false
+			}
 			ed.handleKey(key)
 		}
 	}
@@ -178,7 +225,10 @@ func (ed *Editor) handleKey(key event.Key) {
 
 	switch key {
 	case event.KeyEsc:
-		if ed.mode == modeCommand {
+		if ed.inKanban {
+			ed.inKanban = false
+			ed.kanbanView = nil
+		} else if ed.mode == modeCommand {
 			ed.mode = modeNormal
 			ed.commandLine = ed.commandLine[:0]
 		} else {
@@ -187,6 +237,9 @@ func (ed *Editor) handleKey(key event.Key) {
 	case event.KeyUp:
 		if ed.mode != modeCommand && !ed.inPalette {
 			if ed.inChat {
+				if ed.chat != nil {
+					ed.chat.ScrollUp()
+				}
 			} else if ed.inExplorer {
 				ed.explorer.MoveUp()
 			} else {
@@ -196,6 +249,9 @@ func (ed *Editor) handleKey(key event.Key) {
 	case event.KeyDown:
 		if ed.mode != modeCommand && !ed.inPalette {
 			if ed.inChat {
+				if ed.chat != nil {
+					ed.chat.ScrollDown()
+				}
 			} else if ed.inExplorer {
 				ed.explorer.MoveDown()
 			} else {
@@ -211,6 +267,7 @@ func (ed *Editor) handleKey(key event.Key) {
 			ed.buffer.MoveRight()
 		}
 	case event.KeyBackspace:
+		ed.swallowSpace = true
 		if ed.inPalette {
 			ed.palette.Backspace()
 		} else if ed.mode == modeInsert && ed.inChat {
@@ -289,6 +346,8 @@ func (ed *Editor) handlePaletteKey(key event.Key) {
 	case event.KeyEsc:
 		ed.inPalette = false
 		ed.palette = nil
+	case event.KeyBackspace:
+		ed.palette.Backspace()
 	case event.KeyUp:
 		ed.palette.MoveUp()
 	case event.KeyDown:
@@ -406,6 +465,16 @@ func (ed *Editor) executeCommand() {
 		switch cmd {
 		case "q", "quit":
 			ed.inChat = false
+			ed.inKanban = false
+		case "board":
+			if ed.chat != nil && ed.chat.Mode() == "IMPLEMENT" {
+				ed.inKanban = !ed.inKanban
+				if ed.inKanban {
+					ed.kanbanView = NewKanbanView(ed.chat.Kanban(), ed.buffer.width)
+				} else {
+					ed.kanbanView = nil
+				}
+			}
 		case "accept":
 			if ed.chat != nil && ed.chat.Mode() == "IMPLEMENT" {
 				ed.chat.Accept()
@@ -416,7 +485,7 @@ func (ed *Editor) executeCommand() {
 			}
 		case "chat":
 			ed.openChat("CHAT")
-		case "implement":
+		case "implement", "team":
 			ed.openChat("IMPLEMENT")
 		}
 
@@ -442,8 +511,14 @@ func (ed *Editor) executeCommand() {
 		ed.inExplorer = true
 	case "chat":
 		ed.openChat("CHAT")
-	case "implement":
+	case "implement", "team":
 		ed.openChat("IMPLEMENT")
+	case "board":
+		ed.openChat("IMPLEMENT")
+		if ed.chat != nil && ed.chat.Mode() == "IMPLEMENT" {
+			ed.inKanban = true
+			ed.kanbanView = NewKanbanView(ed.chat.Kanban(), ed.buffer.width)
+		}
 	}
 }
 
@@ -501,12 +576,32 @@ func (ed *Editor) render() {
 	cursorCol := ed.buffer.cursorCol
 	lines := ed.buffer.StringLines()
 
-	if ed.inChat && ed.chat != nil {
+	if ed.inKanban && ed.kanbanView != nil && ed.chat != nil {
+		ed.kanbanView.SetKanban(ed.chat.Kanban())
+		lines = ed.kanbanView.Lines()
+		maxLines := ed.buffer.height - 1
+		if maxLines > 0 && len(lines) > maxLines {
+			lines = lines[:maxLines]
+		}
+		cursorRow = 0
+		cursorCol = 0
+	} else if ed.inChat && ed.chat != nil {
 		raw := ed.chat.Lines()
 		lines = wrapChatLines(raw, ed.buffer.width)
 		maxLines := ed.buffer.height - 1
+
+		offset := ed.chat.ScrollOffset()
+		maxOffset := len(lines) - maxLines
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		if offset > maxOffset {
+			offset = maxOffset
+		}
+
 		if maxLines > 0 && len(lines) > maxLines {
-			lines = lines[len(lines)-maxLines:]
+			start := len(lines) - maxLines - offset
+			lines = lines[start : start+maxLines]
 		}
 		cursorRow = len(lines) - 1
 		if cursorRow < 0 {
@@ -547,6 +642,8 @@ func (ed *Editor) render() {
 	displayMode := ed.mode
 	if ed.inPalette {
 		displayMode = "PALETTE"
+	} else if ed.inKanban {
+		displayMode = "BOARD"
 	} else if ed.inChat && ed.chat != nil && displayMode == modeNormal {
 		displayMode = ed.chat.Mode()
 	} else if ed.inExplorer && displayMode == modeNormal {
@@ -635,6 +732,12 @@ func (ed *Editor) openChat(mode string) {
 		}
 		if ed.systemPrompt != "" {
 			opts = append(opts, ChatWithSystemPrompt(ed.systemPrompt))
+		}
+		if ed.chatTimeout > 0 {
+			opts = append(opts, ChatWithTimeout(ed.chatTimeout))
+		}
+		if ed.chatDumpPath != "" {
+			opts = append(opts, ChatWithDumpFile(ed.chatDumpPath))
 		}
 		ed.chat = NewChat(opts...)
 	}

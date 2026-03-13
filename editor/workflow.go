@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/theapemachine/piaf/team"
 )
 
 var workflowMessageReplacer = strings.NewReplacer("\n", ",", ";", ",", " and ", ",")
@@ -15,6 +17,10 @@ Workflow tracks the implementation board, communication channel, and progress.
 */
 type Workflow struct {
 	mu             sync.Mutex
+	kanban         *team.Kanban
+	plan           *team.ImplementationPlan
+	queue          *team.Queue
+	qaReport       string
 	board          []string
 	developerTasks []string
 	channels       []string
@@ -30,24 +36,129 @@ func NewWorkflow() *Workflow {
 }
 
 /*
-Begin builds a fresh project board for the latest implementation request.
+Begin resets workflow state for a new implementation run.
+Accepts conversation history for PM to scan; the last user message is used as fallback when kanban is empty.
 */
-func (workflow *Workflow) Begin(message string) []string {
+func (workflow *Workflow) Begin(history []string) {
 	workflow.mu.Lock()
 	defer workflow.mu.Unlock()
 
-	workflow.board = workflowBoard(message)
-	workflow.developerTasks = workflowDeveloperTasks(workflow.board)
+	workflow.kanban = nil
+	workflow.plan = nil
+	workflow.qaReport = ""
+	workflow.queue = team.NewQueue(64)
 	workflow.channels = nil
 	workflow.progress = nil
 	workflow.review = ""
+
+	message := lastUserMessage(history)
+	workflow.board = workflowBoard(message)
+	workflow.developerTasks = workflowDeveloperTasks(workflow.board)
+}
+
+/*
+BoardLines returns the project board as display lines for the transcript.
+*/
+func (workflow *Workflow) BoardLines() []string {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
 
 	lines := []string{"Project board:"}
 	for _, item := range workflow.board {
 		lines = append(lines, "- [ ] "+item)
 	}
-
 	return lines
+}
+
+/*
+SetKanban stores the PM-derived kanban and updates board and developer tasks.
+*/
+func (workflow *Workflow) SetKanban(kanban *team.Kanban) {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	if kanban == nil {
+		return
+	}
+
+	workflow.kanban = kanban
+	workflow.board = kanban.Board()
+	workflow.board = append(workflow.board,
+		"Coordinate developer intents and unblock overlapping changes",
+		"Write unit and integration coverage",
+		"Prepare the implementation review for :accept or :reject",
+	)
+	workflow.developerTasks = kanban.DeveloperTasks(maxAssignedDevelopers)
+}
+
+/*
+Kanban returns the current kanban for Architect and Developers.
+*/
+func (workflow *Workflow) Kanban() *team.Kanban {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	return workflow.kanban
+}
+
+/*
+ImplementationPlan holds the Architect-produced plan.
+*/
+func (workflow *Workflow) ImplementationPlan() *team.ImplementationPlan {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	return workflow.plan
+}
+
+/*
+SetImplementationPlan stores the Architect-produced plan.
+*/
+func (workflow *Workflow) SetImplementationPlan(plan *team.ImplementationPlan) {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	workflow.plan = plan
+}
+
+/*
+SetQAReport stores the QA completion report for PM summary.
+*/
+func (workflow *Workflow) SetQAReport(report string) {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	workflow.qaReport = report
+}
+
+/*
+QAReport returns the stored QA report.
+*/
+func (workflow *Workflow) QAReport() string {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	return workflow.qaReport
+}
+
+/*
+Queue returns the coordination queue for Developers and sub-agents.
+*/
+func (workflow *Workflow) Queue() *team.Queue {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	return workflow.queue
+}
+
+func lastUserMessage(history []string) string {
+	for index := len(history) - 1; index >= 0; index-- {
+		line := strings.TrimSpace(history[index])
+		if strings.HasPrefix(line, "You: ") {
+			return strings.TrimPrefix(line, "You: ")
+		}
+	}
+	return ""
 }
 
 /*
