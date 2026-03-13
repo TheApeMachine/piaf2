@@ -1,7 +1,10 @@
 package editor
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -17,6 +20,7 @@ Workflow tracks the implementation board, communication channel, and progress.
 */
 type Workflow struct {
 	mu             sync.Mutex
+	root           string
 	kanban         *team.Kanban
 	plan           *team.ImplementationPlan
 	queue          *team.Queue
@@ -29,10 +33,12 @@ type Workflow struct {
 }
 
 /*
-NewWorkflow instantiates a new Workflow.
+NewWorkflow instantiates a new Workflow and attempts to load an existing saved state.
 */
-func NewWorkflow() *Workflow {
-	return &Workflow{}
+func NewWorkflow(root string) *Workflow {
+	w := &Workflow{root: root}
+	w.LoadKanban()
+	return w
 }
 
 /*
@@ -43,7 +49,7 @@ func (workflow *Workflow) Begin(history []string) {
 	workflow.mu.Lock()
 	defer workflow.mu.Unlock()
 
-	workflow.kanban = nil
+	// Intentionally omitting kanban reset so previously loaded persistent board is active.
 	workflow.plan = nil
 	workflow.qaReport = ""
 	workflow.queue = team.NewQueue(64)
@@ -52,8 +58,44 @@ func (workflow *Workflow) Begin(history []string) {
 	workflow.review = ""
 
 	message := lastUserMessage(history)
-	workflow.board = workflowBoard(message)
-	workflow.developerTasks = workflowDeveloperTasks(workflow.board)
+	
+	if workflow.kanban == nil {
+		workflow.board = workflowBoard(message)
+		workflow.developerTasks = workflowDeveloperTasks(workflow.board)
+	}
+}
+
+func (workflow *Workflow) SaveKanban() {
+	if workflow.kanban == nil || workflow.root == "" {
+		return
+	}
+	
+	path := filepath.Join(workflow.root, ".piaf", "kanban.json")
+	_ = os.MkdirAll(filepath.Dir(path), 0755)
+	
+	b, err := json.MarshalIndent(workflow.kanban, "", "  ")
+	if err == nil {
+		_ = os.WriteFile(path, b, 0644)
+	}
+}
+
+func (workflow *Workflow) LoadKanban() {
+	if workflow.root == "" {
+		return
+	}
+	
+	path := filepath.Join(workflow.root, ".piaf", "kanban.json")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	
+	var kanban team.Kanban
+	if err := json.Unmarshal(b, &kanban); err == nil {
+		workflow.kanban = &kanban
+		workflow.board = kanban.Board()
+		workflow.developerTasks = kanban.DeveloperTasks(maxAssignedDevelopers)
+	}
 }
 
 /*
@@ -83,6 +125,8 @@ func (workflow *Workflow) SetKanban(kanban *team.Kanban) {
 
 	workflow.kanban = kanban
 	workflow.board = kanban.Board()
+	workflow.developerTasks = kanban.DeveloperTasks(maxAssignedDevelopers)
+	workflow.SaveKanban()
 	workflow.board = append(workflow.board,
 		"Coordinate developer intents and unblock overlapping changes",
 		"Write unit and integration coverage",
@@ -318,16 +362,64 @@ AgentMemory stores shared and per-agent memory entries.
 */
 type AgentMemory struct {
 	mu     sync.Mutex
+	root   string
 	shared []string
 	agents map[string][]string
 }
 
 /*
-NewAgentMemory instantiates a new AgentMemory.
+NewAgentMemory instantiates a new AgentMemory, attempting to load from disk.
 */
-func NewAgentMemory() *AgentMemory {
-	return &AgentMemory{
+func NewAgentMemory(root string) *AgentMemory {
+	m := &AgentMemory{
+		root:   root,
 		agents: map[string][]string{},
+	}
+	m.Load()
+	return m
+}
+
+type memoryState struct {
+	Shared []string            `json:"shared"`
+	Agents map[string][]string `json:"agents"`
+}
+
+func (memory *AgentMemory) Save() {
+	if memory.root == "" {
+		return
+	}
+	
+	path := filepath.Join(memory.root, ".piaf", "memory.json")
+	_ = os.MkdirAll(filepath.Dir(path), 0755)
+	
+	state := memoryState{
+		Shared: memory.shared,
+		Agents: memory.agents,
+	}
+	
+	b, err := json.MarshalIndent(state, "", "  ")
+	if err == nil {
+		_ = os.WriteFile(path, b, 0644)
+	}
+}
+
+func (memory *AgentMemory) Load() {
+	if memory.root == "" {
+		return
+	}
+	
+	path := filepath.Join(memory.root, ".piaf", "memory.json")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	
+	var state memoryState
+	if err := json.Unmarshal(b, &state); err == nil {
+		memory.shared = state.Shared
+		if state.Agents != nil {
+			memory.agents = state.Agents
+		}
 	}
 }
 
@@ -350,6 +442,7 @@ func (memory *AgentMemory) RememberShared(entry string) {
 	}
 
 	memory.shared = append(memory.shared, entry)
+	memory.Save()
 }
 
 /*
@@ -373,6 +466,7 @@ func (memory *AgentMemory) RememberAgent(agent string, entry string) {
 	}
 
 	memory.agents[agent] = append(current, entry)
+	memory.Save()
 }
 
 /*

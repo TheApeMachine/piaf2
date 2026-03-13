@@ -67,8 +67,8 @@ func NewChat(opts ...chatOpts) *Chat {
 		mode:     "CHAT",
 		random:   rand.New(rand.NewSource(time.Now().UnixNano())),
 		timeout:  180 * time.Second,
-		workflow: NewWorkflow(),
-		memory:   NewAgentMemory(),
+		workflow: NewWorkflow(root),
+		memory:   NewAgentMemory(root),
 		providers: []provider.Provider{
 			provider.NewOpenAIProvider(),
 			provider.NewClaudeProvider(),
@@ -207,7 +207,7 @@ func (chat *Chat) SetMode(mode string) {
 	switch mode {
 	case "IMPLEMENT":
 		if chat.workflow == nil {
-			chat.workflow = NewWorkflow()
+			chat.workflow = NewWorkflow(chat.root)
 		}
 		chat.history = append(chat.history,
 			"System: development team engaged.",
@@ -418,7 +418,7 @@ func (chat *Chat) submitDiscussion(message string) {
 
 func (chat *Chat) submitImplementation(message string) {
 	if chat.workflow == nil {
-		chat.workflow = NewWorkflow()
+		chat.workflow = NewWorkflow(chat.root)
 	}
 
 	chat.appendHistory("System: Securing current state via Git...")

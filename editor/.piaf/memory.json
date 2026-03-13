@@ -1,0 +1,14 @@
+{
+  "shared": null,
+  "agents": {
+    "Discussion Claude Open 4.6": [
+      "second response"
+    ],
+    "Discussion Gemini Pro 3.1": [
+      "third response"
+    ],
+    "Discussion OpenAI GPT-5.4": [
+      "first response"
+    ]
+  }
+}
