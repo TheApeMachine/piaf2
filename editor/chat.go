@@ -387,6 +387,8 @@ func (chat *Chat) submitDiscussion(message string) {
 		if systemPrompt == "" {
 			systemPrompt = "You are a specialized AI assistant. The root directory of the project is: " + chat.root
 		}
+		limitedExecutor := provider.WithToolLimit(provider.NewDiscussionToolExecutor(toolBackend), 8)
+		
 		request := &provider.Request{
 			Mode:          chat.mode,
 			Message:       message,
@@ -395,7 +397,16 @@ func (chat *Chat) submitDiscussion(message string) {
 			PriorResponse: responses,
 			SystemPrompt:  systemPrompt,
 			Tools:         provider.DiscussionTools(),
-			ToolExecutor:  provider.WithToolLimit(provider.NewDiscussionToolExecutor(toolBackend), 8),
+			ToolExecutor: func(name string, args map[string]any) (string, error) {
+				chat.dumpStage(agentLabel+" Tool Setup", fmt.Sprintf("Executing: %s\nArgs: %v", name, args))
+				res, err := limitedExecutor(name, args)
+				if err != nil {
+					chat.dumpStage(agentLabel+" Tool Error", err.Error())
+				} else {
+					chat.dumpStage(agentLabel+" Tool Result", res)
+				}
+				return res, err
+			},
 		}
 		line, response := chat.runStage(current.Name(), current, request)
 		transcript = append(transcript, line)
@@ -749,8 +760,19 @@ func (chat *Chat) implementationDeveloperRequest(role string, message string, ba
 
 		return discussionExecutor(name, args)
 	}
+
+	limitedExecutor := provider.WithToolLimit(rawExecutor, 8)
 	
-	request.ToolExecutor = provider.WithToolLimit(rawExecutor, 8)
+	request.ToolExecutor = func(name string, args map[string]any) (string, error) {
+		chat.dumpStage(role+" Subsystem", fmt.Sprintf("Tool Execution: %s\nArgs: %v", name, args))
+		res, err := limitedExecutor(name, args)
+		if err != nil {
+			chat.dumpStage(role+" Subsystem Error", err.Error())
+		} else {
+			chat.dumpStage(role+" Subsystem Result", res)
+		}
+		return res, err
+	}
 
 	return request
 }

@@ -10,7 +10,8 @@ import (
 const (
 	ansiEnterAlternate = "\033[?1049h"
 	ansiExitAlternate  = "\033[?1049l"
-	ansiClearHome      = "\033[H\033[2J"
+	ansiCursorHome     = "\033[H"
+	ansiClearDown      = "\033[J"
 	ansiCursorPos      = "\033[%d;%dH"
 	ansiShowCursor     = "\033[?25h"
 	ansiHideCursor     = "\033[?25l"
@@ -70,7 +71,8 @@ func (renderer *Renderer) Write(p []byte) (n int, err error) {
 		renderer.alternateOn = true
 	}
 
-	renderer.output = append(renderer.output, ansiClearHome...)
+	renderer.output = append(renderer.output, ansiHideCursor...)
+	renderer.output = append(renderer.output, ansiCursorHome...)
 
 	maxLines := int(frame.Height) - 1
 
@@ -79,9 +81,12 @@ func (renderer *Renderer) Write(p []byte) (n int, err error) {
 			break
 		}
 
+		renderer.output = append(renderer.output, ansiClearLine...)
 		renderer.output = append(renderer.output, line...)
 		renderer.output = append(renderer.output, '\r', '\n')
 	}
+
+	renderer.output = append(renderer.output, ansiClearDown...) // clear any leftover lines from previous longer frames
 
 	renderer.output = append(renderer.output, fmt.Sprintf(ansiCursorPos, int(frame.Height), 1)...)
 	renderer.output = append(renderer.output, ansiClearLine...)

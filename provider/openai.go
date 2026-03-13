@@ -177,6 +177,9 @@ func (provider *OpenAIProvider) GenerateStream(
 
 		toolOutputs := make([]ToolCallOutput, 0, len(callOutputs))
 		for _, call := range callOutputs {
+			if onChunk != nil {
+				onChunk(fmt.Sprintf("\n[Tool call: %s]\n", call.Name))
+			}
 			output, execErr := req.ToolExecutor(call.Name, call.Args)
 		
 			if execErr != nil {

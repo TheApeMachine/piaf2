@@ -18,6 +18,10 @@ Config holds AI persona prompts and other settings loaded from config.yml.
 */
 type Config struct {
 	AI struct {
+		Chat struct {
+			TimeoutSeconds int    `yaml:"timeoutSeconds"`
+			DumpFile       string `yaml:"dumpFile"`
+		} `yaml:"chat"`
 		Provider struct {
 			OpenAI struct {
 				Model   string `yaml:"model"`

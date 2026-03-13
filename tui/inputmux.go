@@ -1,7 +1,8 @@
 package tui
 
 import (
-	"io"
+"io"
+"sync"
 )
 
 /*
@@ -22,10 +23,15 @@ Implements io.Reader: Read blocks until stdin has data (returned as-is) or refre
 Enables streaming updates to flow through Write to the App without extra methods.
 */
 type InputMux struct {
-	stdin   io.Reader
-	refresh <-chan struct{}
-	quit    io.Reader
-	buf     []byte
+	stdin    io.Reader
+	refresh  <-chan struct{}
+	quit     io.Reader
+	buf      []byte
+	stdinCh  chan []byte
+	errCh    chan error
+	quitCh   chan struct{}
+	once     sync.Once
+	leftover []byte
 }
 
 /*
@@ -76,6 +82,35 @@ func NewInputMux(opts ...inputMuxOpts) *InputMux {
 	return mux
 }
 
+func (mux *InputMux) init() {
+	if mux.stdin != nil {
+		mux.stdinCh = make(chan []byte)
+		mux.errCh = make(chan error, 1)
+		go func() {
+			for {
+				b := make([]byte, 1024)
+				n, err := mux.stdin.Read(b)
+				if n > 0 {
+					mux.stdinCh <- b[:n]
+				}
+				if err != nil {
+					mux.errCh <- err
+					return
+				}
+			}
+		}()
+	}
+
+	if mux.quit != nil {
+		mux.quitCh = make(chan struct{})
+		go func() {
+			b := make([]byte, 1)
+			mux.quit.Read(b)
+			mux.quitCh <- struct{}{}
+		}()
+	}
+}
+
 /*
 Read implements io.Reader.
 Returns stdin bytes or a single refresh sentinel byte when the channel fires.
@@ -85,68 +120,37 @@ func (mux *InputMux) Read(p []byte) (int, error) {
 		return 0, nil
 	}
 
-	stdinCh := make(chan result, 1)
-	if mux.stdin != nil {
-		go func() {
-			count, err := mux.stdin.Read(p)
-			stdinCh <- result{count: count, err: err}
-		}()
+	mux.once.Do(mux.init)
+
+	if len(mux.leftover) > 0 {
+		n := copy(p, mux.leftover)
+		mux.leftover = mux.leftover[n:]
+		return n, nil
 	}
 
-	quitCh := make(chan struct{}, 1)
-	if mux.quit != nil {
-		go func() {
-			mux.quit.Read(mux.buf)
-			quitCh <- struct{}{}
-		}()
-	}
+	// Dynamic select based on available channels
+	// But we can simplify by assigning nil to channels we don't use
+var stdinCh <-chan []byte = mux.stdinCh
+var errCh <-chan error = mux.errCh
+var quitCh <-chan struct{} = mux.quitCh
+var refreshCh <-chan struct{} = mux.refresh
 
-	refreshCh := mux.refresh
-	if refreshCh == nil {
-		refreshCh = make(chan struct{})
-	}
-
-	quitChRead := quitCh
-	if mux.quit == nil {
-		quitChRead = make(chan struct{})
-	}
-
-	if mux.stdin != nil {
-		select {
-		case res := <-stdinCh:
-			return res.count, res.err
-		case <-quitChRead:
-			p[0] = SentinelQuit
-			return 1, nil
-		case <-refreshCh:
-			p[0] = SentinelRefresh
-			return 1, nil
-		}
-	}
-
-	if mux.quit != nil {
-		select {
-		case <-quitChRead:
-			p[0] = SentinelQuit
-			return 1, nil
-		case <-refreshCh:
-			p[0] = SentinelRefresh
-			return 1, nil
-		}
-	}
-
-	if mux.refresh != nil {
-		<-mux.refresh
-		p[0] = SentinelRefresh
-		return 1, nil
-	}
-
-	return 0, io.EOF
+select {
+case b := <-stdinCh:
+n := copy(p, b)
+if n < len(b) {
+mux.leftover = b[n:]
 }
-
-type result struct {
-	count int
-	err   error
+return n, nil
+case err := <-errCh:
+return 0, err
+case <-quitCh:
+p[0] = SentinelQuit
+return 1, nil
+case <-refreshCh:
+p[0] = SentinelRefresh
+return 1, nil
+}
 }
 
 /*
@@ -154,12 +158,12 @@ Write implements io.Writer.
 InputMux is read-only; Write discards.
 */
 func (mux *InputMux) Write(p []byte) (int, error) {
-	return len(p), nil
+return len(p), nil
 }
 
 /*
 Close implements io.Closer.
 */
 func (mux *InputMux) Close() error {
-	return nil
+return nil
 }
