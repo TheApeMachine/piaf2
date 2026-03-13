@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/theapemachine/piaf/event"
 	"github.com/theapemachine/piaf/wire"
@@ -15,6 +16,10 @@ const (
 	modeInsert  = "INSERT"
 	modeCommand = "COMMAND"
 )
+
+const jumpAlphabet = "asdfghjklqwertyuiopzxcvbnm"
+
+var jumpAlphabetLookup = newJumpAlphabetLookup()
 
 /*
 Editor consumes event wire format and emits Frame wire format.
@@ -30,6 +35,9 @@ type Editor struct {
 	mode          string
 	commandLine   []rune
 	quitRequested bool
+	jumpPrefix    string
+	jumpTargets   []jumpTarget
+	jumpCodeLen   int
 	output        []byte
 	readOff       int
 	streamUpdates chan struct{}
@@ -152,6 +160,13 @@ func (ed *Editor) Close() error {
 }
 
 func (ed *Editor) handleKey(key event.Key) {
+	if ed.jumpActive() {
+		ed.clearJump()
+		ed.render()
+
+		return
+	}
+
 	switch key {
 	case event.KeyEsc:
 		if ed.mode == modeCommand {
@@ -235,12 +250,14 @@ func (ed *Editor) handleRune(r rune) {
 	case modeCommand:
 		ed.commandLine = append(ed.commandLine, r)
 	default:
-		if ed.inExplorer {
-			ed.applyExplorerCommand(r)
-		} else if ed.inChat {
-			ed.applyChatCommand(r)
-		} else {
-			ed.applyNormalCommand(r)
+		if !ed.handleJumpRune(r) {
+			if ed.inExplorer {
+				ed.applyExplorerCommand(r)
+			} else if ed.inChat {
+				ed.applyChatCommand(r)
+			} else {
+				ed.applyNormalCommand(r)
+			}
 		}
 	}
 
@@ -326,6 +343,8 @@ func (ed *Editor) applyNormalCommand(r rune) {
 		ed.buffer.MoveLineStart()
 	case '$':
 		ed.buffer.MoveLineEnd()
+	case 'f':
+		ed.startJump()
 	}
 }
 
@@ -458,7 +477,10 @@ func (ed *Editor) render() {
 		cursorCol = 0
 	}
 
-	if ed.mode == modeCommand {
+	if ed.jumpActive() {
+		lines = ed.jumpLines(lines)
+		cmdLine = "f " + ed.jumpPrefix
+	} else if ed.mode == modeCommand {
 		cmdLine = ": " + string(ed.commandLine)
 		cursorRow = ed.buffer.height - 1
 		cursorCol = 2 + len(ed.commandLine)
@@ -511,6 +533,211 @@ func (ed *Editor) openChat(mode string) {
 	ed.inChat = true
 	ed.inExplorer = false
 	ed.chat.SetMode(mode)
+}
+
+/*
+jumpTarget represents a single navigable position in jump mode.
+It holds the row and column coordinates and the associated label code.
+*/
+type jumpTarget struct {
+	row  int
+	col  int
+	code string
+}
+
+/*
+jumpActive returns true if jump mode is currently active.
+*/
+func (ed *Editor) jumpActive() bool {
+	return len(ed.jumpTargets) > 0
+}
+
+/*
+clearJump exits jump mode by resetting all jump state.
+*/
+func (ed *Editor) clearJump() {
+	ed.jumpPrefix = ""
+	ed.jumpTargets = nil
+	ed.jumpCodeLen = 0
+}
+
+/*
+startJump initiates jump mode by discovering visible targets and assigning label codes.
+*/
+func (ed *Editor) startJump() {
+	targets := ed.visibleJumpTargets()
+
+	if len(targets) == 0 {
+		return
+	}
+
+	codeLen := jumpCodeLength(len(targets))
+
+	for index := range targets {
+		targets[index].code = jumpCode(index, codeLen)
+	}
+
+	ed.jumpPrefix = ""
+	ed.jumpTargets = targets
+	ed.jumpCodeLen = codeLen
+}
+
+/*
+handleJumpRune processes a rune during jump mode.
+It returns true if the rune was consumed by jump mode.
+*/
+func (ed *Editor) handleJumpRune(r rune) bool {
+	if !ed.jumpActive() {
+		return false
+	}
+
+	if r >= 256 || !jumpAlphabetLookup[byte(r)] {
+		ed.clearJump()
+
+		return true
+	}
+
+	ed.jumpPrefix += string(r)
+
+	if len(ed.jumpPrefix) < ed.jumpCodeLen {
+		if len(ed.filteredJumpTargets()) == 0 {
+			ed.clearJump()
+		}
+
+		return true
+	}
+
+	for _, target := range ed.jumpTargets {
+		if target.code == ed.jumpPrefix {
+			ed.buffer.cursorRow = target.row
+			ed.buffer.cursorCol = target.col
+			break
+		}
+	}
+
+	ed.clearJump()
+
+	return true
+}
+
+/*
+visibleJumpTargets collects all navigable positions in the visible buffer area.
+*/
+func (ed *Editor) visibleJumpTargets() []jumpTarget {
+	lines := ed.buffer.lines
+	maxRows := ed.buffer.height - 1
+
+	if maxRows <= 0 || maxRows > len(lines) {
+		maxRows = len(lines)
+	}
+
+	targets := make([]jumpTarget, 0)
+
+	for row := range maxRows {
+		line := lines[row]
+
+		if len(line) == 0 {
+			continue
+		}
+
+		targets = append(targets, jumpTarget{row: row, col: 0})
+
+		for col, r := range line {
+			if col == 0 || unicode.IsSpace(r) {
+				continue
+			}
+
+			targets = append(targets, jumpTarget{row: row, col: col})
+		}
+	}
+
+	return targets
+}
+
+/*
+filteredJumpTargets returns targets matching the current jump prefix.
+*/
+func (ed *Editor) filteredJumpTargets() []jumpTarget {
+	if !ed.jumpActive() {
+		return nil
+	}
+
+	if ed.jumpPrefix == "" {
+		return ed.jumpTargets
+	}
+
+	targets := make([]jumpTarget, 0, len(ed.jumpTargets))
+
+	for _, target := range ed.jumpTargets {
+		if strings.HasPrefix(target.code, ed.jumpPrefix) {
+			targets = append(targets, target)
+		}
+	}
+
+	return targets
+}
+
+/*
+jumpLines overlays jump label characters onto the visible lines.
+*/
+func (ed *Editor) jumpLines(lines []string) []string {
+	overlaidLines := append([]string(nil), lines...)
+
+	for _, target := range ed.filteredJumpTargets() {
+		if target.row >= len(overlaidLines) {
+			continue
+		}
+
+		line := []rune(overlaidLines[target.row])
+
+		if target.col >= len(line) || len(target.code) <= len(ed.jumpPrefix) {
+			continue
+		}
+
+		line[target.col] = rune(target.code[len(ed.jumpPrefix)])
+		overlaidLines[target.row] = string(line)
+	}
+
+	return overlaidLines
+}
+
+/*
+jumpCodeLength calculates the minimum label length needed to encode count targets.
+*/
+func jumpCodeLength(count int) int {
+	codeLen := 1
+	capacity := len(jumpAlphabet)
+
+	for count > capacity {
+		codeLen++
+		capacity *= len(jumpAlphabet)
+	}
+
+	return codeLen
+}
+
+/*
+jumpCode generates a base-N label for the given index with the specified length.
+*/
+func jumpCode(index, codeLen int) string {
+	code := make([]byte, codeLen)
+
+	for position := codeLen - 1; position >= 0; position-- {
+		code[position] = jumpAlphabet[index%len(jumpAlphabet)]
+		index /= len(jumpAlphabet)
+	}
+
+	return string(code)
+}
+
+func newJumpAlphabetLookup() [256]bool {
+	lookup := [256]bool{}
+
+	for _, r := range jumpAlphabet {
+		lookup[byte(r)] = true
+	}
+
+	return lookup
 }
 
 func (ed *Editor) onStreamUpdate() {
