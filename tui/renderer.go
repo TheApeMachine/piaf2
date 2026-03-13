@@ -16,6 +16,15 @@ const (
 	ansiShowCursor     = "\033[?25h"
 	ansiHideCursor     = "\033[?25l"
 	ansiClearLine      = "\033[2K"
+	ansiReset          = "\033[0m"
+	ansiBold           = "\033[1m"
+	ansiDim            = "\033[2m"
+	ansiFgGreen        = "\033[32m"
+	ansiFgYellow       = "\033[33m"
+	ansiFgBlue         = "\033[34m"
+	ansiFgMagenta      = "\033[35m"
+	ansiFgCyan         = "\033[36m"
+	ansiFgGray         = "\033[90m"
 )
 
 /*
@@ -23,9 +32,9 @@ Renderer converts Frame state to ANSI terminal output.
 Implements io.ReadWriteCloser: Write accepts Frame wire format, Read yields ANSI bytes.
 */
 type Renderer struct {
-	output        []byte
-	readOffset    int
-	alternateOn   bool
+	output      []byte
+	readOffset  int
+	alternateOn bool
 }
 
 /*
@@ -63,7 +72,18 @@ func (renderer *Renderer) Write(p []byte) (n int, err error) {
 		return 0, err
 	}
 
-	renderer.output = renderer.output[:0]
+	estimatedSize := 128
+
+	for _, line := range frame.Lines {
+		estimatedSize += len(line) + len(ansiClearLine) + 2
+	}
+
+	if cap(renderer.output) < estimatedSize {
+		renderer.output = make([]byte, 0, estimatedSize*2)
+	} else {
+		renderer.output = renderer.output[:0]
+	}
+
 	renderer.readOffset = 0
 
 	if !renderer.alternateOn {
@@ -94,7 +114,7 @@ func (renderer *Renderer) Write(p []byte) (n int, err error) {
 	if frame.CommandLine != "" {
 		renderer.output = append(renderer.output, frame.CommandLine...)
 	} else if frame.Mode != "" {
-		renderer.output = append(renderer.output, "-- "+frame.Mode+" --"...)
+		renderer.output = append(renderer.output, styledMode(frame.Mode)...)
 	}
 
 	row := int(frame.CursorRow) + 1
@@ -117,4 +137,27 @@ func (renderer *Renderer) Close() error {
 	}
 
 	return nil
+}
+
+func styledMode(mode string) string {
+	switch mode {
+	case "NORMAL":
+		return ansiFgGray + ansiDim + "\u2500\u2500 NORMAL \u2500\u2500" + ansiReset
+	case "INSERT":
+		return ansiBold + ansiFgGreen + "\u2500\u2500 INSERT \u2500\u2500" + ansiReset
+	case "COMMAND":
+		return ansiBold + ansiFgYellow + "\u2500\u2500 COMMAND \u2500\u2500" + ansiReset
+	case "CHAT":
+		return ansiBold + ansiFgCyan + "\u2500\u2500 CHAT \u2500\u2500" + ansiReset
+	case "IMPLEMENT":
+		return ansiBold + ansiFgMagenta + "\u2500\u2500 IMPLEMENT \u2500\u2500" + ansiReset
+	case "PALETTE":
+		return ansiBold + ansiFgYellow + "\u2500\u2500 PALETTE \u2500\u2500" + ansiReset
+	case "EXPLORER":
+		return ansiBold + ansiFgBlue + "\u2500\u2500 EXPLORER \u2500\u2500" + ansiReset
+	case "BOARD":
+		return ansiBold + ansiFgBlue + "\u2500\u2500 BOARD \u2500\u2500" + ansiReset
+	default:
+		return "\u2500\u2500 " + mode + " \u2500\u2500"
+	}
 }

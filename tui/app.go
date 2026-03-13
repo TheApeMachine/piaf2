@@ -21,6 +21,7 @@ type App struct {
 	readOff    int
 	closed     bool
 	quitWriter io.Writer
+	pumpBuf    bytes.Buffer
 }
 
 /*
@@ -133,8 +134,8 @@ func (app *App) pump() {
 	}
 
 	app.renderer.Write(frameBytes)
-	buf := &bytes.Buffer{}
-	io.Copy(buf, app.renderer)
-	app.output = append(app.output[:0], buf.Bytes()...)
+	app.pumpBuf.Reset()
+	io.Copy(&app.pumpBuf, app.renderer)
+	app.output = append(app.output[:0], app.pumpBuf.Bytes()...)
 	app.readOff = 0
 }
