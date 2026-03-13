@@ -895,19 +895,14 @@ func (chat *Chat) remember(target string) string {
 	}
 
 	chat.memory.RememberShared(target)
-	chat.appendHistory("System: memory stored -> " + target)
-
 	return "Memory stored: " + target
 }
 
 func (chat *Chat) recall(target string) string {
 	lines := chat.memory.Recall(target)
 	if len(lines) == 0 {
-		chat.appendHistory("System: memory recall returned no matches.")
 		return "Memory recall: no matches."
 	}
-
-	chat.appendHistory(append([]string{"System: memory recall."}, lines...)...)
 
 	return "Memory recall:\n" + strings.Join(lines, "\n")
 }
@@ -915,12 +910,8 @@ func (chat *Chat) recall(target string) string {
 func (chat *Chat) forget(target string) string {
 	removed := chat.memory.Forget(target)
 	if removed == 0 {
-		chat.appendHistory("System: memory forget removed nothing.")
 		return "Memory forget: no matches."
 	}
-
-	line := fmt.Sprintf("System: memory forget removed %d entrie(s).", removed)
-	chat.appendHistory(line)
 
 	return fmt.Sprintf("Memory forget removed %d entrie(s).", removed)
 }
