@@ -25,6 +25,7 @@ const (
 	ansiFgMagenta      = "\033[35m"
 	ansiFgCyan         = "\033[36m"
 	ansiFgGray         = "\033[90m"
+	boxDash            = "\u2500"
 )
 
 /*
@@ -140,24 +141,26 @@ func (renderer *Renderer) Close() error {
 }
 
 func styledMode(mode string) string {
+	border := boxDash + boxDash
+
 	switch mode {
 	case "NORMAL":
-		return ansiFgGray + ansiDim + "\u2500\u2500 NORMAL \u2500\u2500" + ansiReset
+		return ansiFgGray + ansiDim + border + " NORMAL " + border + ansiReset
 	case "INSERT":
-		return ansiBold + ansiFgGreen + "\u2500\u2500 INSERT \u2500\u2500" + ansiReset
+		return ansiBold + ansiFgGreen + border + " INSERT " + border + ansiReset
 	case "COMMAND":
-		return ansiBold + ansiFgYellow + "\u2500\u2500 COMMAND \u2500\u2500" + ansiReset
+		return ansiBold + ansiFgYellow + border + " COMMAND " + border + ansiReset
 	case "CHAT":
-		return ansiBold + ansiFgCyan + "\u2500\u2500 CHAT \u2500\u2500" + ansiReset
+		return ansiBold + ansiFgCyan + border + " CHAT " + border + ansiReset
 	case "IMPLEMENT":
-		return ansiBold + ansiFgMagenta + "\u2500\u2500 IMPLEMENT \u2500\u2500" + ansiReset
+		return ansiBold + ansiFgMagenta + border + " IMPLEMENT " + border + ansiReset
 	case "PALETTE":
-		return ansiBold + ansiFgYellow + "\u2500\u2500 PALETTE \u2500\u2500" + ansiReset
+		return ansiBold + ansiFgYellow + border + " PALETTE " + border + ansiReset
 	case "EXPLORER":
-		return ansiBold + ansiFgBlue + "\u2500\u2500 EXPLORER \u2500\u2500" + ansiReset
+		return ansiBold + ansiFgBlue + border + " EXPLORER " + border + ansiReset
 	case "BOARD":
-		return ansiBold + ansiFgBlue + "\u2500\u2500 BOARD \u2500\u2500" + ansiReset
+		return ansiBold + ansiFgBlue + border + " BOARD " + border + ansiReset
 	default:
-		return "\u2500\u2500 " + mode + " \u2500\u2500"
+		return border + " " + mode + " " + border
 	}
 }
