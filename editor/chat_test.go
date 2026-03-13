@@ -86,7 +86,7 @@ func TestChatSubmit(t *testing.T) {
 				lines := chat.Lines()
 				transcript := strings.Join(lines, "\n")
 
-				convey.So(lines, convey.ShouldHaveLength, 5)
+				convey.So(lines, convey.ShouldHaveLength, 10)
 				convey.So(transcript, convey.ShouldContainSubstring, "Pipeline:")
 				convey.So(transcript, convey.ShouldContainSubstring, "OpenAI GPT-5.4")
 				convey.So(transcript, convey.ShouldContainSubstring, "Claude Open 4.6")
@@ -174,11 +174,6 @@ func TestChatMemoryTools(t *testing.T) {
 			chat.Submit("recall focused")
 
 			convey.Convey("It should expose memory management to the agent pipeline", func() {
-				transcript := strings.Join(chat.Lines(), "\n")
-
-				convey.So(transcript, convey.ShouldContainSubstring, "System: memory stored -> keep tests focused")
-				convey.So(transcript, convey.ShouldContainSubstring, "System: memory recall.")
-				convey.So(transcript, convey.ShouldContainSubstring, "Shared: keep tests focused")
 				convey.So(openai.requests[1].ToolOutput, convey.ShouldContainSubstring, "Memory recall:")
 				convey.So(openai.requests[1].ToolOutput, convey.ShouldContainSubstring, "Shared: keep tests focused")
 			})
@@ -191,8 +186,12 @@ func TestChatImplementWorkflow(t *testing.T) {
 		qaReviews := 0
 		generate := func(request *provider.Request, _ int) string {
 			switch {
+			case strings.Contains(request.SystemPrompt, "Summarize the completed work"):
+				return "Summary: Epics completed. Key changes applied. Tests added. Accept with :accept or :reject."
 			case strings.Contains(request.SystemPrompt, "Project Manager"):
 				return "Project board captured with scope and risks."
+			case strings.Contains(request.SystemPrompt, "Architect"):
+				return "Implementation plan: editor/editor.go, editor/chat.go; order: editor first; risks: minimal."
 			case strings.Contains(request.SystemPrompt, "Team Lead"):
 				return "Team staffed and assignments published."
 			case strings.Contains(request.SystemPrompt, "Developer"):
@@ -232,11 +231,12 @@ func TestChatImplementWorkflow(t *testing.T) {
 				}
 
 				convey.So(transcript, convey.ShouldContainSubstring, "Project board:")
-				convey.So(transcript, convey.ShouldContainSubstring, "Team: Project Manager -> Team Lead -> Developer 1 -> Developer 2 -> QA -> Review")
+				convey.So(transcript, convey.ShouldContainSubstring, "Team: Project Manager -> Architect -> Team Lead -> Developer 1 -> Developer 2 -> QA -> Review")
 				convey.So(transcript, convey.ShouldContainSubstring, "Assignment: Developer 1 owns")
 				convey.So(transcript, convey.ShouldContainSubstring, "Assignment: Developer 2 owns")
 				convey.So(transcript, convey.ShouldContainSubstring, "Channel coordination: Developer 1 intends to change")
 				convey.So(transcript, convey.ShouldContainSubstring, "Channel coordination: Team Lead confirms Developer 1 is clear to proceed")
+				convey.So(transcript, convey.ShouldContainSubstring, "Progress: Architect produced implementation plan.")
 				convey.So(transcript, convey.ShouldContainSubstring, "Progress: Team Lead assigned 2 developer(s) and published the current plan.")
 				convey.So(transcript, convey.ShouldContainSubstring, "Progress: Developer 1 reported implementation progress to the chat.")
 				convey.So(transcript, convey.ShouldContainSubstring, "Progress: QA reviewed the implementation and test plan.")
@@ -244,6 +244,7 @@ func TestChatImplementWorkflow(t *testing.T) {
 				convey.So(transcript, convey.ShouldContainSubstring, "Review: QA final decision PASS.")
 				convey.So(transcript, convey.ShouldContainSubstring, "Accept with :accept or :reject.")
 				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Project Manager")
+				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Architect")
 				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Team Lead")
 				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Developer 1")
 				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the QA")

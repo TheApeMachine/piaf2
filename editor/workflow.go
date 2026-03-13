@@ -1,9 +1,14 @@
 package editor
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/theapemachine/piaf/team"
 )
 
 var workflowMessageReplacer = strings.NewReplacer("\n", ",", ";", ",", " and ", ",")
@@ -15,6 +20,11 @@ Workflow tracks the implementation board, communication channel, and progress.
 */
 type Workflow struct {
 	mu             sync.Mutex
+	root           string
+	kanban         *team.Kanban
+	plan           *team.ImplementationPlan
+	queue          *team.Queue
+	qaReport       string
 	board          []string
 	developerTasks []string
 	channels       []string
@@ -23,31 +33,176 @@ type Workflow struct {
 }
 
 /*
-NewWorkflow instantiates a new Workflow.
+NewWorkflow instantiates a new Workflow and attempts to load an existing saved state.
 */
-func NewWorkflow() *Workflow {
-	return &Workflow{}
+func NewWorkflow(root string) *Workflow {
+	w := &Workflow{root: root}
+	w.LoadKanban()
+	return w
 }
 
 /*
-Begin builds a fresh project board for the latest implementation request.
+Begin resets workflow state for a new implementation run.
+Accepts conversation history for PM to scan; the last user message is used as fallback when kanban is empty.
 */
-func (workflow *Workflow) Begin(message string) []string {
+func (workflow *Workflow) Begin(history []string) {
 	workflow.mu.Lock()
 	defer workflow.mu.Unlock()
 
-	workflow.board = workflowBoard(message)
-	workflow.developerTasks = workflowDeveloperTasks(workflow.board)
+	// Intentionally omitting kanban reset so previously loaded persistent board is active.
+	workflow.plan = nil
+	workflow.qaReport = ""
+	workflow.queue = team.NewQueue(64)
 	workflow.channels = nil
 	workflow.progress = nil
 	workflow.review = ""
+
+	message := lastUserMessage(history)
+	
+	if workflow.kanban == nil {
+		workflow.board = workflowBoard(message)
+		workflow.developerTasks = workflowDeveloperTasks(workflow.board)
+	}
+}
+
+func (workflow *Workflow) SaveKanban() {
+	if workflow.kanban == nil || workflow.root == "" {
+		return
+	}
+	
+	path := filepath.Join(workflow.root, ".piaf", "kanban.json")
+	_ = os.MkdirAll(filepath.Dir(path), 0755)
+	
+	b, err := json.MarshalIndent(workflow.kanban, "", "  ")
+	if err == nil {
+		_ = os.WriteFile(path, b, 0644)
+	}
+}
+
+func (workflow *Workflow) LoadKanban() {
+	if workflow.root == "" {
+		return
+	}
+	
+	path := filepath.Join(workflow.root, ".piaf", "kanban.json")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	
+	var kanban team.Kanban
+	if err := json.Unmarshal(b, &kanban); err == nil {
+		workflow.kanban = &kanban
+		workflow.board = kanban.Board()
+		workflow.developerTasks = kanban.DeveloperTasks(maxAssignedDevelopers)
+	}
+}
+
+/*
+BoardLines returns the project board as display lines for the transcript.
+*/
+func (workflow *Workflow) BoardLines() []string {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
 
 	lines := []string{"Project board:"}
 	for _, item := range workflow.board {
 		lines = append(lines, "- [ ] "+item)
 	}
-
 	return lines
+}
+
+/*
+SetKanban stores the PM-derived kanban and updates board and developer tasks.
+*/
+func (workflow *Workflow) SetKanban(kanban *team.Kanban) {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	if kanban == nil {
+		return
+	}
+
+	workflow.kanban = kanban
+	workflow.board = kanban.Board()
+	workflow.developerTasks = kanban.DeveloperTasks(maxAssignedDevelopers)
+	workflow.SaveKanban()
+	workflow.board = append(workflow.board,
+		"Coordinate developer intents and unblock overlapping changes",
+		"Write unit and integration coverage",
+		"Prepare the implementation review for :accept or :reject",
+	)
+	workflow.developerTasks = kanban.DeveloperTasks(maxAssignedDevelopers)
+}
+
+/*
+Kanban returns the current kanban for Architect and Developers.
+*/
+func (workflow *Workflow) Kanban() *team.Kanban {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	return workflow.kanban
+}
+
+/*
+ImplementationPlan holds the Architect-produced plan.
+*/
+func (workflow *Workflow) ImplementationPlan() *team.ImplementationPlan {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	return workflow.plan
+}
+
+/*
+SetImplementationPlan stores the Architect-produced plan.
+*/
+func (workflow *Workflow) SetImplementationPlan(plan *team.ImplementationPlan) {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	workflow.plan = plan
+}
+
+/*
+SetQAReport stores the QA completion report for PM summary.
+*/
+func (workflow *Workflow) SetQAReport(report string) {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	workflow.qaReport = report
+}
+
+/*
+QAReport returns the stored QA report.
+*/
+func (workflow *Workflow) QAReport() string {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	return workflow.qaReport
+}
+
+/*
+Queue returns the coordination queue for Developers and sub-agents.
+*/
+func (workflow *Workflow) Queue() *team.Queue {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	return workflow.queue
+}
+
+func lastUserMessage(history []string) string {
+	for index := len(history) - 1; index >= 0; index-- {
+		line := strings.TrimSpace(history[index])
+		if strings.HasPrefix(line, "You: ") {
+			return strings.TrimPrefix(line, "You: ")
+		}
+	}
+	return ""
 }
 
 /*
@@ -207,16 +362,64 @@ AgentMemory stores shared and per-agent memory entries.
 */
 type AgentMemory struct {
 	mu     sync.Mutex
+	root   string
 	shared []string
 	agents map[string][]string
 }
 
 /*
-NewAgentMemory instantiates a new AgentMemory.
+NewAgentMemory instantiates a new AgentMemory, attempting to load from disk.
 */
-func NewAgentMemory() *AgentMemory {
-	return &AgentMemory{
+func NewAgentMemory(root string) *AgentMemory {
+	m := &AgentMemory{
+		root:   root,
 		agents: map[string][]string{},
+	}
+	m.Load()
+	return m
+}
+
+type memoryState struct {
+	Shared []string            `json:"shared"`
+	Agents map[string][]string `json:"agents"`
+}
+
+func (memory *AgentMemory) Save() {
+	if memory.root == "" {
+		return
+	}
+	
+	path := filepath.Join(memory.root, ".piaf", "memory.json")
+	_ = os.MkdirAll(filepath.Dir(path), 0755)
+	
+	state := memoryState{
+		Shared: memory.shared,
+		Agents: memory.agents,
+	}
+	
+	b, err := json.MarshalIndent(state, "", "  ")
+	if err == nil {
+		_ = os.WriteFile(path, b, 0644)
+	}
+}
+
+func (memory *AgentMemory) Load() {
+	if memory.root == "" {
+		return
+	}
+	
+	path := filepath.Join(memory.root, ".piaf", "memory.json")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	
+	var state memoryState
+	if err := json.Unmarshal(b, &state); err == nil {
+		memory.shared = state.Shared
+		if state.Agents != nil {
+			memory.agents = state.Agents
+		}
 	}
 }
 
@@ -239,6 +442,7 @@ func (memory *AgentMemory) RememberShared(entry string) {
 	}
 
 	memory.shared = append(memory.shared, entry)
+	memory.Save()
 }
 
 /*
@@ -262,6 +466,7 @@ func (memory *AgentMemory) RememberAgent(agent string, entry string) {
 	}
 
 	memory.agents[agent] = append(current, entry)
+	memory.Save()
 }
 
 /*

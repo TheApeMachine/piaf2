@@ -1,0 +1,65 @@
+{
+  "shared": [
+    "Project board prepared for: add a command palette",
+    "scoped the request",
+    "Claude Open 4.6 response 2",
+    "Gemini Pro 3.1 response 2",
+    "keep tests focused",
+    "Project board prepared for: add a command palette and integration tests",
+    "Team staffed and assignments published.",
+    "Developer implementation progress shared.",
+    "Project board prepared for: add tests"
+  ],
+  "agents": {
+    "Architect": [
+      "prepared the diff",
+      "Implementation plan: editor/editor.go, editor/chat.go; order: editor first; risks: minimal."
+    ],
+    "Developer 1": [
+      "Gemini Pro 3.1 response 2",
+      "Developer implementation progress shared."
+    ],
+    "Developer 2": [
+      "Claude Open 4.6 response 2",
+      "Developer implementation progress shared."
+    ],
+    "Discussion Claude Open 4.6": [
+      "second response",
+      "Claude Open 4.6 response 4",
+      "tracked",
+      "confirmed",
+      "Review summary ready. Accept with :accept or :reject."
+    ],
+    "Discussion Gemini Pro 3.1": [
+      "third response",
+      "Gemini Pro 3.1 response 5",
+      "stored",
+      "shared",
+      "Review summary ready. Accept with :accept or :reject."
+    ],
+    "Discussion OpenAI GPT-5.4": [
+      "first response",
+      "OpenAI GPT-5.4 response 2",
+      "remembered",
+      "recalled",
+      "Review summary ready. Accept with :accept or :reject."
+    ],
+    "Project Manager": [
+      "final implementation summary",
+      "Project board captured with scope and risks."
+    ],
+    "QA": [
+      "Gemini Pro 3.1 response 3",
+      "Decision: REWORK\nUnit coverage is incomplete.",
+      "Decision: PASS\nCoverage now looks good."
+    ],
+    "Review": [
+      "Claude Open 4.6 response 3",
+      "Review summary ready. Accept with :accept or :reject."
+    ],
+    "Team Lead": [
+      "scoped the request",
+      "Team staffed and assignments published."
+    ]
+  }
+}

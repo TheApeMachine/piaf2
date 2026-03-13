@@ -67,6 +67,8 @@ func paletteCommands() []paletteItem {
 	return []paletteItem{
 		{kind: paletteKindCommand, label: "chat – open AI chat", value: "chat"},
 		{kind: paletteKindCommand, label: "implement – AI implement mode", value: "implement"},
+		{kind: paletteKindCommand, label: "team – activate dev team (alias for implement)", value: "team"},
+		{kind: paletteKindCommand, label: "board – view kanban (IMPLEMENT mode)", value: "board"},
 		{kind: paletteKindCommand, label: "e <file> – edit file", value: "e"},
 		{kind: paletteKindCommand, label: "E, Ex – file explorer", value: "E"},
 		{kind: paletteKindCommand, label: "q – quit", value: "q"},

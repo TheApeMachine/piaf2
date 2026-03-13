@@ -107,7 +107,7 @@ func (keyboard *Keyboard) handleNormal(b byte) {
 		return
 	}
 
-	if b >= 0x20 {
+	if b >= 0x20 && b != 0x7f {
 		keyboard.output = event.EncodeRune(keyboard.output, rune(b))
 		return
 	}

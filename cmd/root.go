@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"time"
 
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
@@ -42,18 +43,31 @@ var rootCmd = &cobra.Command{
 
 		config, _ := core.Load()
 		systemPrompt := ""
+		var chatTimeout time.Duration
+		var chatDumpPath string
 		if config != nil {
 			systemPrompt = config.AI.Persona.Research.Manager
+			if config.AI.Chat.TimeoutSeconds > 0 {
+				chatTimeout = time.Duration(config.AI.Chat.TimeoutSeconds) * time.Second
+			}
+			chatDumpPath = config.AI.Chat.DumpFile
 		}
 
 		streamCh := make(chan struct{}, 16)
 		quitRead, quitWrite := io.Pipe()
-		ed := editor.NewEditor(
+		opts := []editor.EditorOpt{
 			editor.EditorWithSize(width, height),
 			editor.EditorWithPath(path),
 			editor.EditorWithStreamUpdates(streamCh),
 			editor.EditorWithSystemPrompt(systemPrompt),
-		)
+		}
+		if chatTimeout > 0 {
+			opts = append(opts, editor.EditorWithChatTimeout(chatTimeout))
+		}
+		if chatDumpPath != "" {
+			opts = append(opts, editor.EditorWithChatDumpPath(chatDumpPath))
+		}
+		ed := editor.NewEditor(opts...)
 		mux := tui.NewInputMux(
 			tui.InputMuxWithStdin(os.Stdin),
 			tui.InputMuxWithRefresh(streamCh),

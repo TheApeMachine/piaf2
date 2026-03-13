@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
+	"time"
 )
 
 /*
@@ -144,4 +146,56 @@ func BuildUserPrompt(request *Request) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+type retryProvider struct {
+	base     Provider
+	attempts int
+}
+
+func WithRetry(base Provider, attempts int) Provider {
+	return &retryProvider{
+		base:     base,
+		attempts: attempts,
+	}
+}
+
+func (r *retryProvider) Name() string { return r.base.Name() }
+
+func (r *retryProvider) Generate(ctx context.Context, request *Request) (response string, err error) {
+	for i := 0; i < r.attempts; i++ {
+		response, err = r.base.Generate(ctx, request)
+		if err == nil {
+			return response, nil
+		}
+
+		if i < r.attempts-1 {
+			backoff := time.Duration(math.Pow(2, float64(i))) * time.Second
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+	}
+	return response, err
+}
+
+func (r *retryProvider) GenerateStream(ctx context.Context, request *Request, onChunk func(string)) (response string, err error) {
+	for i := 0; i < r.attempts; i++ {
+		response, err = r.base.GenerateStream(ctx, request, onChunk)
+		if err == nil {
+			return response, nil
+		}
+
+		if i < r.attempts-1 {
+			backoff := time.Duration(math.Pow(2, float64(i))) * time.Second
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+	}
+	return response, err
 }

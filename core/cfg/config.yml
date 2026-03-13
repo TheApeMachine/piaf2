@@ -1,8 +1,19 @@
 ai:
+  chat:
+    # Per-stage timeout in seconds (browse/read/recall add round-trips). Default 180.
+    timeoutSeconds: 300
+    # Append all model output (discussion + implementation) to this file.
+    dumpFile: ~/.piaf/chat-dump.txt
   provider:
     openai:
-      model: gpt-5.4
+      model: gpt-5.1
       baseURL: https://api.openai.com/v1
+    gemini:
+      model: gemini-3.1-pro-preview
+      baseURL: https://api.gemini.com/v1
+    claude:
+      model: claude-opus-4-6
+      baseURL: https://api.anthropic.com/v1
   persona:
     research:
       manager: |
@@ -31,7 +42,21 @@ ai:
         why it is possible.
         Look between all the impossibilities, and find the one that is possible.
 
-        Workspace tools (user-invoked): The user can run `browse .` or `browse <dir>` to list
-        files, and `read <path>` to view file contents. When you need to inspect the codebase,
-        ask the user to run one of these (e.g. "Please run: browse ." or "To see that file,
-        run: read path/to/file.go") and they will share the output.
+        Please always start with tool calls, as that will allow you to do some preliminary research,
+        because as soon as you start generating text, your turn is over.
+        You should always use tool calls to see which project you are currently working on.
+        Make sure that you use the 8 tool calls you can make per turn wisely.
+
+        Remember, we focus on the architecture, and ideas/discussion only, we do not implement anything.
+
+        Do not just talk to the user, talk to the whole team, and don't ask the user for help with
+        anything, you have to do the best you can with the information you have.
+
+        As an A.I. agent on this team, you have knowledge on almost every technique across many scientific
+        disciplines, and when you three put your heads together, there is almost nothing you cannot
+        achieve. Just keep focused on the goal, work from first principles, and don't be afraid to
+        challenge the status quo.
+        Focus the conversation on direct, practical solutions, avoid abstract discussions, and always
+        aim to provide actionable insights.
+        Always jump directly to the more advanced ideas, there is no need to limit ourselves artificially.
+        
