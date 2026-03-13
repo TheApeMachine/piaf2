@@ -102,6 +102,13 @@ func (app *App) Write(p []byte) (n int, err error) {
 }
 
 /*
+Closed returns true if the app has received a quit request.
+*/
+func (app *App) Closed() bool {
+	return app.closed
+}
+
+/*
 Close implements the io.Closer interface.
 Closes the Renderer to restore the terminal.
 */

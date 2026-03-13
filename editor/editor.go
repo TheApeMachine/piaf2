@@ -29,8 +29,10 @@ type Editor struct {
 	buffer        *Buffer
 	chat          *Chat
 	explorer      *Explorer
+	palette       *Palette
 	inChat        bool
 	inExplorer    bool
+	inPalette     bool
 	path          string
 	mode          string
 	commandLine   []rune
@@ -167,6 +169,13 @@ func (ed *Editor) handleKey(key event.Key) {
 		return
 	}
 
+	if ed.inPalette {
+		ed.handlePaletteKey(key)
+		ed.render()
+
+		return
+	}
+
 	switch key {
 	case event.KeyEsc:
 		if ed.mode == modeCommand {
@@ -176,7 +185,7 @@ func (ed *Editor) handleKey(key event.Key) {
 			ed.mode = modeNormal
 		}
 	case event.KeyUp:
-		if ed.mode != modeCommand {
+		if ed.mode != modeCommand && !ed.inPalette {
 			if ed.inChat {
 			} else if ed.inExplorer {
 				ed.explorer.MoveUp()
@@ -185,7 +194,7 @@ func (ed *Editor) handleKey(key event.Key) {
 			}
 		}
 	case event.KeyDown:
-		if ed.mode != modeCommand {
+		if ed.mode != modeCommand && !ed.inPalette {
 			if ed.inChat {
 			} else if ed.inExplorer {
 				ed.explorer.MoveDown()
@@ -202,7 +211,9 @@ func (ed *Editor) handleKey(key event.Key) {
 			ed.buffer.MoveRight()
 		}
 	case event.KeyBackspace:
-		if ed.mode == modeInsert && ed.inChat {
+		if ed.inPalette {
+			ed.palette.Backspace()
+		} else if ed.mode == modeInsert && ed.inChat {
 			if len(ed.commandLine) > 0 {
 				ed.commandLine = ed.commandLine[:len(ed.commandLine)-1]
 			}
@@ -214,7 +225,9 @@ func (ed *Editor) handleKey(key event.Key) {
 	case event.KeyRefresh:
 		ed.render()
 	case event.KeyEnter:
-		if ed.mode == modeCommand {
+		if ed.inPalette {
+			ed.executePaletteSelection()
+		} else if ed.mode == modeCommand {
 			ed.executeCommand()
 			ed.mode = modeNormal
 			ed.commandLine = ed.commandLine[:0]
@@ -240,6 +253,13 @@ func (ed *Editor) handleKey(key event.Key) {
 }
 
 func (ed *Editor) handleRune(r rune) {
+	if ed.inPalette {
+		ed.palette.Append(r)
+		ed.render()
+
+		return
+	}
+
 	switch ed.mode {
 	case modeInsert:
 		if ed.inChat {
@@ -264,8 +284,26 @@ func (ed *Editor) handleRune(r rune) {
 	ed.render()
 }
 
+func (ed *Editor) handlePaletteKey(key event.Key) {
+	switch key {
+	case event.KeyEsc:
+		ed.inPalette = false
+		ed.palette = nil
+	case event.KeyUp:
+		ed.palette.MoveUp()
+	case event.KeyDown:
+		ed.palette.MoveDown()
+	case event.KeyEnter:
+		ed.executePaletteSelection()
+	}
+
+	ed.render()
+}
+
 func (ed *Editor) applyExplorerCommand(r rune) {
 	switch r {
+	case '/':
+		ed.openPalette()
 	case ':':
 		ed.mode = modeCommand
 		ed.commandLine = ed.commandLine[:0]
@@ -295,6 +333,8 @@ func (ed *Editor) applyExplorerCommand(r rune) {
 
 func (ed *Editor) applyChatCommand(r rune) {
 	switch r {
+	case '/':
+		ed.openPalette()
 	case ':':
 		ed.mode = modeCommand
 		ed.commandLine = ed.commandLine[:0]
@@ -306,6 +346,8 @@ func (ed *Editor) applyChatCommand(r rune) {
 
 func (ed *Editor) applyNormalCommand(r rune) {
 	switch r {
+	case '/':
+		ed.openPalette()
 	case ':':
 		ed.mode = modeCommand
 		ed.commandLine = ed.commandLine[:0]
@@ -477,7 +519,19 @@ func (ed *Editor) render() {
 		cursorCol = 0
 	}
 
-	if ed.jumpActive() {
+	if ed.inPalette && ed.palette != nil {
+		lines = ed.palette.Results()
+		maxLines := ed.buffer.height - 1
+		if maxLines > 0 && len(lines) > maxLines {
+			lines = lines[:maxLines]
+		}
+		cursorRow = ed.palette.Cursor()
+		if cursorRow >= len(lines) {
+			cursorRow = len(lines) - 1
+		}
+		cursorCol = 0
+		cmdLine = "/ " + ed.palette.Query()
+	} else if ed.jumpActive() {
 		lines = ed.jumpLines(lines)
 		cmdLine = "f " + ed.jumpPrefix
 	} else if ed.mode == modeCommand {
@@ -491,7 +545,9 @@ func (ed *Editor) render() {
 	}
 
 	displayMode := ed.mode
-	if ed.inChat && ed.chat != nil && displayMode == modeNormal {
+	if ed.inPalette {
+		displayMode = "PALETTE"
+	} else if ed.inChat && ed.chat != nil && displayMode == modeNormal {
 		displayMode = ed.chat.Mode()
 	} else if ed.inExplorer && displayMode == modeNormal {
 		displayMode = "EXPLORER"
@@ -516,6 +572,59 @@ func (ed *Editor) render() {
 
 	ed.output = append(ed.output[:0], data...)
 	ed.readOff = 0
+}
+
+func (ed *Editor) openPalette() {
+	ed.palette = NewPalette(PaletteWithRoot(ed.workspaceRoot()))
+	ed.inPalette = true
+	ed.palette.refresh()
+}
+
+func (ed *Editor) executePaletteSelection() {
+	if ed.palette == nil {
+		ed.inPalette = false
+		return
+	}
+
+	kind, value := ed.palette.Selected()
+	ed.inPalette = false
+	ed.palette = nil
+
+	if kind == "" {
+		return
+	}
+
+	if kind == paletteKindCommand {
+		ed.commandLine = []rune(value)
+		ed.mode = modeCommand
+		ed.executeCommand()
+		ed.mode = modeNormal
+		ed.commandLine = ed.commandLine[:0]
+	} else if kind == paletteKindFile {
+		ed.buffer.LoadPath(value)
+		ed.path = value
+		ed.inExplorer = false
+		ed.inChat = false
+	} else if kind == paletteKindContent {
+		parts := strings.SplitN(value, ":", 2)
+		if len(parts) == 2 {
+			ed.buffer.LoadPath(parts[0])
+			ed.path = parts[0]
+			ed.inExplorer = false
+			ed.inChat = false
+
+			lineNum := 0
+			for _, r := range parts[1] {
+				if r >= '0' && r <= '9' {
+					lineNum = lineNum*10 + int(r-'0')
+				}
+			}
+			if lineNum > 0 && lineNum <= len(ed.buffer.lines) {
+				ed.buffer.cursorRow = lineNum - 1
+				ed.buffer.cursorCol = 0
+			}
+		}
+	}
 }
 
 func (ed *Editor) openChat(mode string) {
@@ -677,25 +786,36 @@ func (ed *Editor) filteredJumpTargets() []jumpTarget {
 	return targets
 }
 
+const ansiInverse = "\033[7m"
+const ansiReset = "\033[0m"
+
 /*
 jumpLines overlays jump label characters onto the visible lines.
+Labels are shown in inverse video after each target without replacing the original text.
+Processes right-to-left so column positions stay valid across inserts.
 */
 func (ed *Editor) jumpLines(lines []string) []string {
 	overlaidLines := append([]string(nil), lines...)
+	targets := ed.filteredJumpTargets()
 
-	for _, target := range ed.filteredJumpTargets() {
+	for index := len(targets) - 1; index >= 0; index-- {
+		target := targets[index]
+
 		if target.row >= len(overlaidLines) {
 			continue
 		}
 
-		line := []rune(overlaidLines[target.row])
+		line := overlaidLines[target.row]
+		runes := []rune(line)
 
-		if target.col >= len(line) || len(target.code) <= len(ed.jumpPrefix) {
+		if target.col >= len(runes) || len(target.code) <= len(ed.jumpPrefix) {
 			continue
 		}
 
-		line[target.col] = rune(target.code[len(ed.jumpPrefix)])
-		overlaidLines[target.row] = string(line)
+		label := string(rune(target.code[len(ed.jumpPrefix)]))
+		before := string(runes[:target.col+1])
+		after := string(runes[target.col+1:])
+		overlaidLines[target.row] = before + ansiInverse + label + ansiReset + after
 	}
 
 	return overlaidLines

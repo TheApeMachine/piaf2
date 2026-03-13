@@ -1,51 +1,65 @@
 package provider
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"strings"
-	"time"
+
+	"google.golang.org/genai"
 )
 
 /*
-GeminiProvider calls the Gemini generateContent API.
+GeminiProvider calls the Gemini API via the official genai SDK.
+Supports GenerateContent and GenerateContentStream.
 */
 type GeminiProvider struct {
-	baseURL string
-	apiKey  string
-	model   string
-	client  *http.Client
+	client *genai.Client
+	model  string
 }
 
+type geminiOpts func(*GeminiProvider)
+
 /*
-NewGeminiProvider instantiates a GeminiProvider from the environment.
+NewGeminiProvider instantiates a GeminiProvider from config and environment.
 */
-func NewGeminiProvider() *GeminiProvider {
-	baseURL := os.Getenv("GEMINI_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://generativelanguage.googleapis.com/v1beta"
+func NewGeminiProvider(opts ...geminiOpts) *GeminiProvider {
+	provider := &GeminiProvider{
+		model: "gemini-2.5-flash",
 	}
 
-	model := os.Getenv("GEMINI_MODEL")
-	if model == "" {
-		model = "gemini-3.1-pro-preview"
+	if model := os.Getenv("GEMINI_MODEL"); model != "" {
+		provider.model = model
 	}
 
-	return &GeminiProvider{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		apiKey:  os.Getenv("GEMINI_API_KEY"),
-		model:   model,
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+	for _, opt := range opts {
+		opt(provider)
 	}
+
+	if provider.client == nil {
+		apiKey := os.Getenv("GEMINI_API_KEY")
+		if apiKey == "" {
+			apiKey = os.Getenv("GOOGLE_API_KEY")
+		}
+
+		if apiKey == "" {
+			return provider
+		}
+
+		config := &genai.ClientConfig{
+			APIKey:  apiKey,
+			Backend: genai.BackendGeminiAPI,
+		}
+
+		client, err := genai.NewClient(context.Background(), config)
+		if err != nil {
+			return provider
+		}
+
+		provider.client = client
+	}
+
+	return provider
 }
 
 /*
@@ -56,199 +70,133 @@ func (provider *GeminiProvider) Name() string {
 }
 
 /*
-Generate performs a Gemini generateContent request.
+Generate performs a non-streaming GenerateContent request.
 */
 func (provider *GeminiProvider) Generate(ctx context.Context, request *Request) (response string, err error) {
-	if provider.apiKey == "" {
-		return "", fmt.Errorf("%s is not configured: missing GEMINI_API_KEY", provider.Name())
+	if provider.client == nil {
+		return "", fmt.Errorf("%s is not configured: missing GEMINI_API_KEY or GOOGLE_API_KEY", provider.Name())
 	}
 
-	payload := map[string]any{
-		"systemInstruction": map[string]any{
-			"parts": []map[string]string{
-				{
-					"text": BuildSystemPrompt(request),
-				},
-			},
-		},
-		"contents": []map[string]any{
-			{
-				"role": "user",
-				"parts": []map[string]string{
-					{
-						"text": BuildUserPrompt(request),
-					},
-				},
-			},
-		},
+	system := BuildSystemPrompt(request)
+	user := BuildUserPrompt(request)
+
+	config := &genai.GenerateContentConfig{
+		Temperature: genai.Ptr[float32](0),
 	}
 
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-
-	endpoint := provider.baseURL + "/models/" + provider.model + ":generateContent?key=" + url.QueryEscape(provider.apiKey)
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-
-	httpRequest.Header.Set("Content-Type", "application/json")
-
-	httpResponse, err := provider.client.Do(httpRequest)
-	if err != nil {
-		return "", err
-	}
-	defer httpResponse.Body.Close()
-
-	responseBody, err := io.ReadAll(httpResponse.Body)
-	if err != nil {
-		return "", err
-	}
-
-	if httpResponse.StatusCode >= http.StatusBadRequest {
-		return "", fmt.Errorf("%s: %s", provider.Name(), parseAPIError(responseBody))
-	}
-
-	var decoded struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-
-	if err = json.Unmarshal(responseBody, &decoded); err != nil {
-		return "", err
-	}
-
-	if len(decoded.Candidates) == 0 {
-		return "", fmt.Errorf("%s returned no candidates", provider.Name())
-	}
-
-	parts := make([]string, 0, len(decoded.Candidates[0].Content.Parts))
-	for _, part := range decoded.Candidates[0].Content.Parts {
-		if part.Text != "" {
-			parts = append(parts, strings.TrimSpace(part.Text))
+	if system != "" {
+		config.SystemInstruction = &genai.Content{
+			Parts: []*genai.Part{{Text: system}},
 		}
 	}
 
-	if len(parts) == 0 {
+	result, err := provider.client.Models.GenerateContent(ctx, provider.model, genai.Text(user), config)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", provider.Name(), err)
+	}
+
+	text := strings.TrimSpace(result.Text())
+	if text == "" {
 		return "", fmt.Errorf("%s returned no content", provider.Name())
 	}
 
-	return strings.Join(parts, "\n"), nil
+	return text, nil
 }
 
 /*
-GenerateStream performs a streaming Gemini generateContent request.
+GenerateStream performs a streaming GenerateContent request.
 */
-func (provider *GeminiProvider) GenerateStream(ctx context.Context, request *Request, onChunk func(string)) (response string, err error) {
-	if provider.apiKey == "" {
-		return "", fmt.Errorf("%s is not configured: missing GEMINI_API_KEY", provider.Name())
+func (provider *GeminiProvider) GenerateStream(
+	ctx context.Context,
+	request *Request,
+	onChunk func(string),
+) (response string, err error) {
+	if provider.client == nil {
+		return "", fmt.Errorf("%s is not configured: missing GEMINI_API_KEY or GOOGLE_API_KEY", provider.Name())
 	}
 
-	payload := map[string]any{
-		"systemInstruction": map[string]any{
-			"parts": []map[string]string{
-				{
-					"text": BuildSystemPrompt(request),
-				},
-			},
-		},
-		"contents": []map[string]any{
-			{
-				"role": "user",
-				"parts": []map[string]string{
-					{
-						"text": BuildUserPrompt(request),
-					},
-				},
-			},
-		},
+	system := BuildSystemPrompt(request)
+	user := BuildUserPrompt(request)
+
+	config := &genai.GenerateContentConfig{
+		Temperature: genai.Ptr[float32](0),
 	}
 
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-
-	endpoint := provider.baseURL + "/models/" + provider.model + ":streamGenerateContent?alt=sse&key=" + url.QueryEscape(provider.apiKey)
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-
-	httpRequest.Header.Set("Content-Type", "application/json")
-
-	httpResponse, err := provider.client.Do(httpRequest)
-	if err != nil {
-		return "", err
-	}
-	defer httpResponse.Body.Close()
-
-	if httpResponse.StatusCode >= http.StatusBadRequest {
-		responseBody, _ := io.ReadAll(httpResponse.Body)
-		return "", fmt.Errorf("%s: %s", provider.Name(), parseAPIError(responseBody))
+	if system != "" {
+		config.SystemInstruction = &genai.Content{
+			Parts: []*genai.Part{{Text: system}},
+		}
 	}
 
 	var full strings.Builder
-	scanner := bufio.NewScanner(httpResponse.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	for result, streamErr := range provider.client.Models.GenerateContentStream(ctx, provider.model, genai.Text(user), config) {
+		if streamErr != nil {
+			return full.String(), fmt.Errorf("%s: %w", provider.Name(), streamErr)
 		}
 
-		jsonBytes := []byte(line)
-		if strings.HasPrefix(line, "data:") {
-			jsonBytes = []byte(strings.TrimSpace(line[5:]))
-		}
-
-		if len(jsonBytes) == 0 || string(jsonBytes) == "[DONE]" {
-			continue
-		}
-
-		var decoded struct {
-			Candidates []struct {
-				Content struct {
-					Parts []struct {
-						Text string `json:"text"`
-					} `json:"parts"`
-				} `json:"content"`
-			} `json:"candidates"`
-		}
-
-		if parseErr := json.Unmarshal(jsonBytes, &decoded); parseErr != nil {
-			continue
-		}
-
-		if len(decoded.Candidates) > 0 {
-			for _, part := range decoded.Candidates[0].Content.Parts {
-				if part.Text != "" {
-					chunk := part.Text
-					full.WriteString(chunk)
-					if onChunk != nil {
-						onChunk(chunk)
-					}
-				}
+		chunk := result.Text()
+		if chunk != "" {
+			full.WriteString(chunk)
+			if onChunk != nil {
+				onChunk(chunk)
 			}
 		}
 	}
 
-	if scanErr := scanner.Err(); scanErr != nil {
-		return full.String(), scanErr
-	}
-
-	result := strings.TrimSpace(full.String())
-	if result == "" {
+	text := strings.TrimSpace(full.String())
+	if text == "" {
 		return "", fmt.Errorf("%s returned no content", provider.Name())
 	}
 
-	return result, nil
+	return text, nil
 }
+
+/*
+GeminiWithClient configures GeminiProvider with a genai client.
+*/
+func GeminiWithClient(client *genai.Client) geminiOpts {
+	return func(provider *GeminiProvider) {
+		provider.client = client
+	}
+}
+
+/*
+GeminiWithModel configures GeminiProvider with a model name.
+*/
+func GeminiWithModel(model string) geminiOpts {
+	return func(provider *GeminiProvider) {
+		provider.model = model
+	}
+}
+
+/*
+GeminiWithBaseURL configures GeminiProvider with a custom base URL for testing.
+*/
+func GeminiWithBaseURL(baseURL string) geminiOpts {
+	return func(provider *GeminiProvider) {
+		if provider.client != nil {
+			return
+		}
+
+		apiKey := os.Getenv("GEMINI_API_KEY")
+		if apiKey == "" {
+			apiKey = os.Getenv("GOOGLE_API_KEY")
+		}
+		if apiKey == "" {
+			apiKey = "test-key"
+		}
+
+		config := &genai.ClientConfig{
+			APIKey:      apiKey,
+			Backend:     genai.BackendGeminiAPI,
+			HTTPOptions: genai.HTTPOptions{BaseURL: baseURL},
+		}
+
+		client, err := genai.NewClient(context.Background(), config)
+		if err == nil {
+			provider.client = client
+		}
+	}
+}
+

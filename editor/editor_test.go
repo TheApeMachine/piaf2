@@ -183,11 +183,25 @@ func TestEditorJumpMode(t *testing.T) {
 			ed.Write(encodeRune('f'))
 			frame := decodeFrame(ed)
 
-			convey.Convey("It should overlay jump hints and show the jump prompt", func() {
+			convey.Convey("It should overlay jump hints without replacing original text", func() {
 				convey.So(frame, convey.ShouldNotBeNil)
 				convey.So(frame.CommandLine, convey.ShouldEqual, "f ")
-				convey.So(frame.Lines[0], convey.ShouldStartWith, "asdfg")
-				convey.So(frame.Lines[1], convey.ShouldStartWith, "qwert")
+				stripAnsi := func(s string) string {
+					var out []byte
+					for index := 0; index < len(s); index++ {
+						if s[index] == '\033' && index+1 < len(s) && s[index+1] == '[' {
+							for index++; index < len(s) && s[index] != 'm'; index++ {
+							}
+							continue
+						}
+						out = append(out, s[index])
+					}
+					return string(out)
+				}
+				stripped0 := stripAnsi(frame.Lines[0])
+				stripped1 := stripAnsi(frame.Lines[1])
+				convey.So(stripped0, convey.ShouldContainSubstring, " b")
+				convey.So(stripped1, convey.ShouldContainSubstring, " d")
 			})
 		})
 
@@ -221,7 +235,7 @@ func TestEditorJumpMode(t *testing.T) {
 				convey.So(ed.jumpActive(), convey.ShouldBeTrue)
 				convey.So(ed.jumpCodeLen, convey.ShouldEqual, 2)
 				convey.So(frame.CommandLine, convey.ShouldEqual, "f a")
-				convey.So(frame.Lines[0], convey.ShouldStartWith, "asdfg")
+				convey.So(frame.Lines[0], convey.ShouldContainSubstring, "abcde")
 			})
 		})
 
@@ -395,6 +409,56 @@ func TestEditorCommandMode(t *testing.T) {
 				convey.So(ed.inChat, convey.ShouldBeTrue)
 				convey.So(ed.chat, convey.ShouldNotBeNil)
 				convey.So(ed.chat.Mode(), convey.ShouldEqual, "IMPLEMENT")
+			})
+		})
+		convey.Convey("When '/' is pressed", func() {
+			ed.Write(encodeRune('/'))
+
+			convey.Convey("It should open the universal palette", func() {
+				convey.So(ed.inPalette, convey.ShouldBeTrue)
+				convey.So(ed.palette, convey.ShouldNotBeNil)
+				convey.So(ed.palette.Query(), convey.ShouldEqual, "")
+			})
+		})
+	})
+}
+
+func TestEditorPalette(t *testing.T) {
+	convey.Convey("Given an Editor", t, func() {
+		ed := NewEditor(EditorWithPath("."))
+
+		convey.Convey("When '/' is pressed", func() {
+			ed.Write(encodeRune('/'))
+			frame := decodeFrame(ed)
+
+			convey.Convey("It should show the palette with commands", func() {
+				convey.So(ed.inPalette, convey.ShouldBeTrue)
+				convey.So(frame, convey.ShouldNotBeNil)
+				convey.So(frame.CommandLine, convey.ShouldEqual, "/ ")
+				convey.So(len(frame.Lines), convey.ShouldBeGreaterThan, 0)
+			})
+		})
+
+		convey.Convey("When '/' then 'chat' then Enter are entered", func() {
+			ed.Write(encodeRune('/'))
+			for _, r := range "chat" {
+				ed.Write(encodeRune(r))
+			}
+			ed.Write(encodeSpecial(event.KeyEnter))
+
+			convey.Convey("It should execute the selected command", func() {
+				convey.So(ed.inPalette, convey.ShouldBeFalse)
+				convey.So(ed.inChat, convey.ShouldBeTrue)
+			})
+		})
+
+		convey.Convey("When '/' then Esc are entered", func() {
+			ed.Write(encodeRune('/'))
+			ed.Write(encodeSpecial(event.KeyEsc))
+
+			convey.Convey("It should close the palette", func() {
+				convey.So(ed.inPalette, convey.ShouldBeFalse)
+				convey.So(ed.palette, convey.ShouldBeNil)
 			})
 		})
 	})

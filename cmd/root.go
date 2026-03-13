@@ -79,7 +79,12 @@ var rootCmd = &cobra.Command{
 				}
 				app.Write(buf[:count])
 			}
+
 			io.Copy(os.Stdout, app)
+
+			if app.Closed() {
+				return
+			}
 		}
 	},
 }
