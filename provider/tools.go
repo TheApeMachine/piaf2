@@ -11,10 +11,11 @@ Implement this interface to wire DiscussionTools to a chat or similar context.
 */
 type DiscussionToolBackend interface {
 	Browse(path string) string
-	Read(path string) string
+	Read(path string, start, end int) string
 	Remember(content string) string
 	Recall(filter string) string
 	Forget(filter string) string
+	Search(query, path string) string
 }
 
 /*
@@ -54,6 +55,9 @@ NewDiscussionToolExecutor returns a ToolExecutor that dispatches to the backend.
 */
 func NewDiscussionToolExecutor(backend DiscussionToolBackend) func(string, map[string]any) (string, error) {
 	return func(name string, args map[string]any) (string, error) {
+		var res string
+		var err error
+
 		switch name {
 		case "browse":
 			path, _ := args["path"].(string)
@@ -66,19 +70,33 @@ func NewDiscussionToolExecutor(backend DiscussionToolBackend) func(string, map[s
 			if path == "" {
 				return "", fmt.Errorf("read requires path")
 			}
-			return backend.Read(path), nil
+			startLine, _ := args["start_line"].(float64)
+			endLine, _ := args["end_line"].(float64)
+			res, err = backend.Read(path, int(startLine), int(endLine)), nil
 		case "remember":
 			content, _ := args["content"].(string)
-			return backend.Remember(content), nil
+			res, err = backend.Remember(content), nil
 		case "recall":
 			filter, _ := args["filter"].(string)
-			return backend.Recall(filter), nil
+			res, err = backend.Recall(filter), nil
 		case "forget":
 			filter, _ := args["filter"].(string)
-			return backend.Forget(filter), nil
+			res, err = backend.Forget(filter), nil
+		case "search":
+			path, _ := args["path"].(string)
+			if path == "" {
+				path = "."
+			}
+			query, _ := args["query"].(string)
+			if query == "" {
+				res, err = "", fmt.Errorf("search requires query parameter")
+			} else {
+				res, err = backend.Search(query, path), nil
+			}
 		default:
-			return "", fmt.Errorf("unknown tool: %s", name)
+			res, err = "", fmt.Errorf("unknown tool: %s", name)
 		}
+		return res, err
 	}
 }
 
@@ -103,7 +121,7 @@ func DiscussionTools() []ToolDefinition {
 		},
 		{
 			Name:        "read",
-			Description: "Read the contents of a file in the workspace. Use to inspect source code or config.",
+			Description: "Read the contents of a file in the workspace. Accepts optional start_line and end_line for huge files. 1-indexed.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -111,8 +129,28 @@ func DiscussionTools() []ToolDefinition {
 						"type":        "string",
 						"description": "File path to read, e.g. 'editor/chat.go'",
 					},
+					"start_line": map[string]any{
+						"type":        "number",
+						"description": "Optional starting line number to read from (1-indexed).",
+					},
+					"end_line": map[string]any{
+						"type":        "number",
+						"description": "Optional ending line number to read until (1-indexed, inclusive).",
+					},
 				},
 				"required": []string{"path"},
+			},
+		},
+		{
+			Name:        "search",
+			Description: "Search for a text string or pattern across files in a directory.",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"query": map[string]any{"type": "string", "description": "The exact text or pattern to search for"},
+					"path":  map[string]any{"type": "string", "description": "The directory path to search in, defaults to '.'"},
+				},
+				"required": []string{"query"},
 			},
 		},
 		{

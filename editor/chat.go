@@ -70,9 +70,9 @@ func NewChat(opts ...chatOpts) *Chat {
 		workflow: NewWorkflow(root),
 		memory:   NewAgentMemory(root),
 		providers: []provider.Provider{
-			provider.NewOpenAIProvider(),
-			provider.NewClaudeProvider(),
-			provider.NewGeminiProvider(),
+			provider.WithRetry(provider.NewOpenAIProvider(), 3),
+			provider.WithRetry(provider.NewClaudeProvider(), 3),
+			provider.WithRetry(provider.NewGeminiProvider(), 3),
 		},
 	}
 
