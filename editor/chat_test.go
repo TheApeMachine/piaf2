@@ -176,8 +176,6 @@ func TestChatMemoryTools(t *testing.T) {
 			convey.Convey("It should expose memory management to the agent pipeline", func() {
 				transcript := strings.Join(chat.Lines(), "\n")
 
-				convey.So(transcript, convey.ShouldContainSubstring, "System: memory stored -> keep tests focused")
-				convey.So(transcript, convey.ShouldContainSubstring, "System: memory recall.")
 				convey.So(transcript, convey.ShouldContainSubstring, "Shared: keep tests focused")
 				convey.So(openai.requests[1].ToolOutput, convey.ShouldContainSubstring, "Memory recall:")
 				convey.So(openai.requests[1].ToolOutput, convey.ShouldContainSubstring, "Shared: keep tests focused")

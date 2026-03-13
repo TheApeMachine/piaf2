@@ -395,7 +395,7 @@ func (chat *Chat) submitDiscussion(message string) {
 			PriorResponse: responses,
 			SystemPrompt:  systemPrompt,
 			Tools:         provider.DiscussionTools(),
-			ToolExecutor:  provider.NewDiscussionToolExecutor(toolBackend),
+			ToolExecutor:  provider.WithToolLimit(provider.NewDiscussionToolExecutor(toolBackend), 8),
 		}
 		line, response := chat.runStage(current.Name(), current, request)
 		transcript = append(transcript, line)
@@ -693,7 +693,7 @@ func (chat *Chat) implementationDeveloperRequest(role string, message string, ba
 	runner := team.NewSubAgentRunner(chat.timeout)
 	discussionExecutor := provider.NewDiscussionToolExecutor(&chatToolBackend{chat: chat})
 
-	request.ToolExecutor = func(name string, args map[string]any) (string, error) {
+	rawExecutor := func(name string, args map[string]any) (string, error) {
 		if name == "spawn_subagent" {
 			userPrompt, _ := args["user_prompt"].(string)
 			systemPrompt, _ := args["system_prompt"].(string)
@@ -749,6 +749,8 @@ func (chat *Chat) implementationDeveloperRequest(role string, message string, ba
 
 		return discussionExecutor(name, args)
 	}
+	
+	request.ToolExecutor = provider.WithToolLimit(rawExecutor, 8)
 
 	return request
 }
