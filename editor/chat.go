@@ -860,6 +860,10 @@ func (chat *Chat) appendHistory(lines ...string) {
 	chat.mu.Lock()
 	chat.history = append(chat.history, lines...)
 	chat.mu.Unlock()
+
+	if chat.onStream != nil {
+		chat.onStream()
+	}
 }
 
 func (chat *Chat) snapshot() []string {
