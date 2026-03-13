@@ -18,6 +18,7 @@ const (
 	KeyBackspace Key = 5
 	KeyEnter     Key = 6
 	KeyQuit      Key = 7
+	KeyRefresh   Key = 8
 )
 
 const (

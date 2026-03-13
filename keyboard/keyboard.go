@@ -84,6 +84,11 @@ func (keyboard *Keyboard) Close() error {
 }
 
 func (keyboard *Keyboard) processByte(b byte) {
+	if b == 0xFE {
+		keyboard.output = event.EncodeSpecial(keyboard.output, event.KeyRefresh)
+		return
+	}
+
 	switch keyboard.state {
 	case stateNormal:
 		keyboard.handleNormal(b)
@@ -156,8 +161,19 @@ func (keyboard *Keyboard) handleCSIParam(b byte) {
 
 	keyboard.state = stateNormal
 
-	if b == '~' && len(keyboard.csiParam) == 1 && keyboard.csiParam[0] == '3' {
-		keyboard.output = event.EncodeSpecial(keyboard.output, event.KeyBackspace)
+	switch b {
+	case 'A':
+		keyboard.output = event.EncodeSpecial(keyboard.output, event.KeyUp)
+	case 'B':
+		keyboard.output = event.EncodeSpecial(keyboard.output, event.KeyDown)
+	case 'C':
+		keyboard.output = event.EncodeSpecial(keyboard.output, event.KeyRight)
+	case 'D':
+		keyboard.output = event.EncodeSpecial(keyboard.output, event.KeyLeft)
+	case '~':
+		if len(keyboard.csiParam) == 1 && keyboard.csiParam[0] == '3' {
+			keyboard.output = event.EncodeSpecial(keyboard.output, event.KeyBackspace)
+		}
 	}
 
 	keyboard.csiParam = keyboard.csiParam[:0]

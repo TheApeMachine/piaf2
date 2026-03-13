@@ -12,6 +12,38 @@ import (
 	"github.com/smartystreets/goconvey/convey"
 )
 
+func TestParseAPIError(t *testing.T) {
+	convey.Convey("Given API error JSON", t, func() {
+		convey.Convey("When body has error.message and error.code", func() {
+			body := []byte(`{"error":{"code":404,"message":"models/gemini-pro-3.1 is not found for API version v1beta","status":"NOT_FOUND"}}`)
+			convey.Convey("It should return a single-line message with code prefix", func() {
+				convey.So(parseAPIError(body), convey.ShouldEqual, "404: models/gemini-pro-3.1 is not found for API version v1beta")
+			})
+		})
+
+		convey.Convey("When body has error.message and string code", func() {
+			body := []byte(`{"error":{"message":"Project does not have access to model","code":"model_not_found"}}`)
+			convey.Convey("It should return message with code prefix", func() {
+				convey.So(parseAPIError(body), convey.ShouldEqual, "model_not_found: Project does not have access to model")
+			})
+		})
+
+		convey.Convey("When body is not valid JSON", func() {
+			body := []byte("plain text error")
+			convey.Convey("It should return truncated raw", func() {
+				convey.So(parseAPIError(body), convey.ShouldEqual, "plain text error")
+			})
+		})
+
+		convey.Convey("When body has newlines in JSON", func() {
+			body := []byte("{\"error\":{\"message\":\"not configured\"}}\n")
+			convey.Convey("It should return clean message", func() {
+				convey.So(parseAPIError(body), convey.ShouldEqual, "not configured")
+			})
+		})
+	})
+}
+
 func TestOpenAIProviderGenerate(t *testing.T) {
 	convey.Convey("Given an OpenAIProvider", t, func() {
 		var path string
@@ -26,16 +58,15 @@ func TestOpenAIProviderGenerate(t *testing.T) {
 			json.Unmarshal(data, &body)
 
 			writer.Header().Set("Content-Type", "application/json")
-			writer.Write([]byte(`{"choices":[{"message":{"content":"first response"}}]}`))
+			writer.Write([]byte(`{"id":"resp_1","output":[{"content":[{"type":"output_text","text":"first response"}]}]}`))
 		}))
 		defer server.Close()
 
-		provider := &OpenAIProvider{
-			baseURL: server.URL,
-			apiKey:  "openai-key",
-			model:   "gpt-5.4",
-			client:  server.Client(),
-		}
+		provider := NewOpenAIProvider(
+			OpenAIWithBaseURL(server.URL),
+			OpenAIWithAPIKey("openai-key"),
+			OpenAIWithModel("gpt-5.4"),
+		)
 
 		convey.Convey("When Generate is called", func() {
 			response, err := provider.Generate(context.Background(), &Request{
@@ -44,10 +75,10 @@ func TestOpenAIProviderGenerate(t *testing.T) {
 				ToolOutput: "Tool browse .",
 			})
 
-			convey.Convey("It should call the chat completions endpoint", func() {
+			convey.Convey("It should call the responses endpoint", func() {
 				convey.So(err, convey.ShouldBeNil)
 				convey.So(response, convey.ShouldEqual, "first response")
-				convey.So(path, convey.ShouldEqual, "/chat/completions")
+				convey.So(path, convey.ShouldEqual, "/responses")
 				convey.So(auth, convey.ShouldEqual, "Bearer openai-key")
 				convey.So(body["model"], convey.ShouldEqual, "gpt-5.4")
 			})

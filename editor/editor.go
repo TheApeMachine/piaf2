@@ -40,6 +40,8 @@ type Editor struct {
 	jumpCodeLen   int
 	output        []byte
 	readOff       int
+	streamUpdates chan struct{}
+	systemPrompt  string
 }
 
 /*
@@ -72,6 +74,24 @@ func EditorWithSize(width, height int) editorOpts {
 	return func(ed *Editor) {
 		ed.buffer.width = width
 		ed.buffer.height = height
+	}
+}
+
+/*
+EditorWithSystemPrompt sets the AI system prompt for chat provider requests.
+*/
+func EditorWithSystemPrompt(prompt string) editorOpts {
+	return func(ed *Editor) {
+		ed.systemPrompt = prompt
+	}
+}
+
+/*
+EditorWithStreamUpdates sets the channel to signal when streaming produces new content.
+*/
+func EditorWithStreamUpdates(ch chan struct{}) editorOpts {
+	return func(ed *Editor) {
+		ed.streamUpdates = ch
 	}
 }
 
@@ -191,6 +211,8 @@ func (ed *Editor) handleKey(key event.Key) {
 		} else if ed.mode == modeCommand && len(ed.commandLine) > 0 {
 			ed.commandLine = ed.commandLine[:len(ed.commandLine)-1]
 		}
+	case event.KeyRefresh:
+		ed.render()
 	case event.KeyEnter:
 		if ed.mode == modeCommand {
 			ed.executeCommand()
@@ -198,7 +220,7 @@ func (ed *Editor) handleKey(key event.Key) {
 			ed.commandLine = ed.commandLine[:0]
 		} else if ed.mode == modeInsert && ed.inChat {
 			if ed.chat != nil {
-				ed.chat.Submit(string(ed.commandLine))
+				go ed.chat.Submit(string(ed.commandLine))
 			}
 			ed.commandLine = ed.commandLine[:0]
 			ed.mode = modeNormal
@@ -247,6 +269,27 @@ func (ed *Editor) applyExplorerCommand(r rune) {
 	case ':':
 		ed.mode = modeCommand
 		ed.commandLine = ed.commandLine[:0]
+	case 'j':
+		ed.explorer.MoveDown()
+	case 'k':
+		ed.explorer.MoveUp()
+	case 'h':
+		for ed.explorer.Cursor() > 0 {
+			ed.explorer.MoveUp()
+		}
+		target, _, loadFile := ed.explorer.Enter()
+		if loadFile {
+			ed.buffer.LoadPath(target)
+			ed.path = target
+			ed.inExplorer = false
+		}
+	case 'l':
+		target, _, loadFile := ed.explorer.Enter()
+		if loadFile {
+			ed.buffer.LoadPath(target)
+			ed.path = target
+			ed.inExplorer = false
+		}
 	}
 }
 
@@ -362,11 +405,52 @@ func (ed *Editor) executeCommand() {
 	}
 }
 
-/*
-QuitRequested returns true if the user executed :q, :q!, or :wq.
-*/
-func (ed *Editor) QuitRequested() bool {
-	return ed.quitRequested
+func wrapChatLines(raw []string, width int) []string {
+	if width <= 0 {
+		return raw
+	}
+
+	out := make([]string, 0)
+
+	for index, entry := range raw {
+		if index > 0 {
+			out = append(out, "")
+		}
+
+		for _, segment := range strings.Split(entry, "\n") {
+			runes := []rune(strings.TrimRight(segment, " \t"))
+			for len(runes) > 0 {
+				if len(runes) <= width {
+					out = append(out, string(runes))
+					break
+				}
+
+				breakAt := width
+				for index := width - 1; index >= 0; index-- {
+					if index < len(runes) && (runes[index] == ' ' || runes[index] == '\t') {
+						breakAt = index + 1
+						break
+					}
+				}
+
+				out = append(out, string(runes[:breakAt]))
+				runes = runes[breakAt:]
+				runes = trimLeftSpaces(runes)
+			}
+		}
+	}
+
+	return out
+}
+
+func trimLeftSpaces(runes []rune) []rune {
+	for index, r := range runes {
+		if r != ' ' && r != '\t' {
+			return runes[index:]
+		}
+	}
+
+	return nil
 }
 
 func (ed *Editor) render() {
@@ -376,7 +460,8 @@ func (ed *Editor) render() {
 	lines := ed.buffer.StringLines()
 
 	if ed.inChat && ed.chat != nil {
-		lines = ed.chat.Lines()
+		raw := ed.chat.Lines()
+		lines = wrapChatLines(raw, ed.buffer.width)
 		maxLines := ed.buffer.height - 1
 		if maxLines > 0 && len(lines) > maxLines {
 			lines = lines[len(lines)-maxLines:]
@@ -420,6 +505,7 @@ func (ed *Editor) render() {
 		Height:      uint32(ed.buffer.height),
 		Mode:        displayMode,
 		CommandLine: cmdLine,
+		Quit:        ed.quitRequested,
 	}
 
 	data, err := io.ReadAll(frame)
@@ -434,7 +520,14 @@ func (ed *Editor) render() {
 
 func (ed *Editor) openChat(mode string) {
 	if ed.chat == nil {
-		ed.chat = NewChat(ChatWithRoot(ed.workspaceRoot()))
+		opts := []chatOpts{ChatWithRoot(ed.workspaceRoot())}
+		if ed.streamUpdates != nil {
+			opts = append(opts, ChatWithOnStream(ed.onStreamUpdate))
+		}
+		if ed.systemPrompt != "" {
+			opts = append(opts, ChatWithSystemPrompt(ed.systemPrompt))
+		}
+		ed.chat = NewChat(opts...)
 	}
 
 	ed.inChat = true
@@ -645,6 +738,15 @@ func newJumpAlphabetLookup() [256]bool {
 	}
 
 	return lookup
+}
+
+func (ed *Editor) onStreamUpdate() {
+	if ed.streamUpdates != nil {
+		select {
+		case ed.streamUpdates <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func (ed *Editor) workspaceRoot() string {
