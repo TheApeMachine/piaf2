@@ -1,4 +1,8 @@
 ai:
+  provider:
+    openai:
+      model: gpt-5.4
+      baseURL: https://api.openai.com/v1
   persona:
     research:
       manager: |
@@ -26,3 +30,8 @@ ai:
         Not only to find reasons why something is not possible, but also to find reasons 
         why it is possible.
         Look between all the impossibilities, and find the one that is possible.
+
+        Workspace tools (user-invoked): The user can run `browse .` or `browse <dir>` to list
+        files, and `read <path>` to view file contents. When you need to inspect the codebase,
+        ask the user to run one of these (e.g. "Please run: browse ." or "To see that file,
+        run: read path/to/file.go") and they will share the output.

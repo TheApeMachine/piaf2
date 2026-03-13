@@ -1,4 +1,4 @@
-package cmd
+package core
 
 import (
 	"testing"
@@ -8,7 +8,7 @@ import (
 
 func TestLoadEmbedded(t *testing.T) {
 	convey.Convey("Given embedded config", t, func() {
-		config, err := LoadEmbedded(embedded, "cfg/config.yml")
+		config, err := LoadEmbedded(Embedded, "cfg/config.yml")
 
 		convey.Convey("It should load without error", func() {
 			convey.So(err, convey.ShouldBeNil)

@@ -2,23 +2,15 @@ package cmd
 
 import (
 	"bytes"
-	"embed"
 	"io"
 	"os"
 
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
+	"github.com/theapemachine/piaf/core"
 	"github.com/theapemachine/piaf/editor"
 	"github.com/theapemachine/piaf/tui"
 )
-
-/*
-Embed a mini filesystem into the binary to hold the default config file.
-This will be written to the home directory of the user running the service,
-which allows a developer to easily override the config file.
-*/
-//go:embed cfg/*
-var embedded embed.FS
 
 /*
 Root command definition.
@@ -48,7 +40,7 @@ var rootCmd = &cobra.Command{
 			path = args[0]
 		}
 
-		config, _ := Load(embedded)
+		config, _ := core.Load()
 		systemPrompt := ""
 		if config != nil {
 			systemPrompt = config.AI.Persona.Research.Manager

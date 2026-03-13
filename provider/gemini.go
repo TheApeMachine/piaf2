@@ -35,7 +35,7 @@ func NewGeminiProvider() *GeminiProvider {
 
 	model := os.Getenv("GEMINI_MODEL")
 	if model == "" {
-		model = "gemini-1.5-flash"
+		model = "gemini-3.1-pro-preview"
 	}
 
 	return &GeminiProvider{
@@ -52,7 +52,7 @@ func NewGeminiProvider() *GeminiProvider {
 Name returns the provider display name.
 */
 func (provider *GeminiProvider) Name() string {
-	return "Gemini"
+	return "Gemini Pro 3.1"
 }
 
 /*

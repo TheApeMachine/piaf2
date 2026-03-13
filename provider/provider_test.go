@@ -58,16 +58,15 @@ func TestOpenAIProviderGenerate(t *testing.T) {
 			json.Unmarshal(data, &body)
 
 			writer.Header().Set("Content-Type", "application/json")
-			writer.Write([]byte(`{"choices":[{"message":{"content":"first response"}}]}`))
+			writer.Write([]byte(`{"id":"resp_1","output":[{"content":[{"type":"output_text","text":"first response"}]}]}`))
 		}))
 		defer server.Close()
 
-		provider := &OpenAIProvider{
-			baseURL: server.URL,
-			apiKey:  "openai-key",
-			model:   "gpt-5.4",
-			client:  server.Client(),
-		}
+		provider := NewOpenAIProvider(
+			OpenAIWithBaseURL(server.URL),
+			OpenAIWithAPIKey("openai-key"),
+			OpenAIWithModel("gpt-5.4"),
+		)
 
 		convey.Convey("When Generate is called", func() {
 			response, err := provider.Generate(context.Background(), &Request{
@@ -76,10 +75,10 @@ func TestOpenAIProviderGenerate(t *testing.T) {
 				ToolOutput: "Tool browse .",
 			})
 
-			convey.Convey("It should call the chat completions endpoint", func() {
+			convey.Convey("It should call the responses endpoint", func() {
 				convey.So(err, convey.ShouldBeNil)
 				convey.So(response, convey.ShouldEqual, "first response")
-				convey.So(path, convey.ShouldEqual, "/chat/completions")
+				convey.So(path, convey.ShouldEqual, "/responses")
 				convey.So(auth, convey.ShouldEqual, "Bearer openai-key")
 				convey.So(body["model"], convey.ShouldEqual, "gpt-5.4")
 			})

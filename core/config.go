@@ -1,4 +1,4 @@
-package cmd
+package core
 
 import (
 	"embed"
@@ -8,11 +8,22 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+//go:embed cfg/*
+var Embedded embed.FS
+
+var Cfg *Config
+
 /*
 Config holds AI persona prompts and other settings loaded from config.yml.
 */
 type Config struct {
 	AI struct {
+		Provider struct {
+			OpenAI struct {
+				Model   string `yaml:"model"`
+				BaseURL string `yaml:"baseURL"`
+			} `yaml:"openai"`
+		} `yaml:"provider"`
 		Persona struct {
 			Research struct {
 				Manager string `yaml:"manager"`
@@ -24,7 +35,7 @@ type Config struct {
 /*
 Load reads config from the user's config path if it exists, otherwise from embedded cfg.
 */
-func Load(embedded embed.FS) (*Config, error) {
+func Load() (*Config, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = "."
@@ -40,7 +51,7 @@ func Load(embedded embed.FS) (*Config, error) {
 		return config, nil
 	}
 
-	return LoadEmbedded(embedded, "cfg/config.yml")
+	return LoadEmbedded(Embedded, "cfg/config.yml")
 }
 
 /*
@@ -58,5 +69,6 @@ func LoadEmbedded(embedded embed.FS, name string) (*Config, error) {
 		return nil, err
 	}
 
+	Cfg = config
 	return config, nil
 }

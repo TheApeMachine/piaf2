@@ -393,7 +393,11 @@ func wrapChatLines(raw []string, width int) []string {
 
 	out := make([]string, 0)
 
-	for _, entry := range raw {
+	for index, entry := range raw {
+		if index > 0 {
+			out = append(out, "")
+		}
+
 		for _, segment := range strings.Split(entry, "\n") {
 			runes := []rune(strings.TrimRight(segment, " \t"))
 			for len(runes) > 0 {

@@ -61,16 +61,39 @@ func parseAPIError(body []byte) string {
 }
 
 /*
+ToolDefinition describes a function tool for the model to call.
+*/
+type ToolDefinition struct {
+	Name        string
+	Description string
+	Parameters  map[string]any
+}
+
+/*
+ToolCallOutput is the result of executing a tool call, sent when continuing a conversation.
+*/
+type ToolCallOutput struct {
+	CallID string
+	Output string
+}
+
+/*
 Request carries the running discussion context into a provider call.
 SystemPrompt overrides the default when non-empty.
+Tools and ToolExecutor enable function calling; when ToolExecutor is set, the provider
+loops until the model returns text (no more tool calls).
 */
 type Request struct {
-	Mode          string
-	Message       string
-	ToolOutput    string
-	Transcript    []string
-	PriorResponse []string
-	SystemPrompt  string
+	Mode              string
+	Message           string
+	ToolOutput        string
+	Transcript        []string
+	PriorResponse     []string
+	SystemPrompt      string
+	Tools             []ToolDefinition
+	ToolExecutor      func(name string, args map[string]any) (string, error)
+	PreviousResponseID string
+	ToolCallOutputs   []ToolCallOutput
 }
 
 /*
@@ -84,19 +107,11 @@ type Provider interface {
 }
 
 /*
-BuildSystemPrompt creates the shared provider system prompt.
-Uses Request.SystemPrompt when set, otherwise returns the default for the mode.
+BuildSystemPrompt returns the system prompt from the request.
+The prompt is supplied by the caller (config-driven); the provider does not override it.
 */
 func BuildSystemPrompt(request *Request) string {
-	if request.SystemPrompt != "" {
-		return request.SystemPrompt
-	}
-
-	if request.Mode == "IMPLEMENT" {
-		return "You are part of a three-model development team. Keep the implementation plan concrete, minimal, and reviewable. The final agent must leave the user with a decision they can accept or reject."
-	}
-
-	return "You are part of a three-model discussion chain. Build on the prior context, keep the answer concise, and use any provided workspace tool output as evidence."
+	return request.SystemPrompt
 }
 
 /*
