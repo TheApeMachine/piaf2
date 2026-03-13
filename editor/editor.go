@@ -609,8 +609,25 @@ func (ed *Editor) render() {
 		}
 		cursorCol = 0
 	} else if ed.inExplorer && ed.explorer != nil {
-		lines = ed.explorer.Lines()
+		raw := ed.explorer.Lines()
+		maxLines := ed.buffer.height - 1
+
 		cursorRow = ed.explorer.Cursor()
+		offset := 0
+		if cursorRow >= maxLines {
+			offset = cursorRow - maxLines + 1
+		}
+
+		if maxLines > 0 && len(raw) > maxLines {
+			end := offset + maxLines
+			if end > len(raw) {
+				end = len(raw)
+			}
+			lines = raw[offset:end]
+			cursorRow -= offset
+		} else {
+			lines = raw
+		}
 		cursorCol = 0
 	}
 
