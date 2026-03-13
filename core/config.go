@@ -16,8 +16,20 @@ var Cfg *Config
 /*
 Config holds AI persona prompts and other settings loaded from config.yml.
 */
+/*
+PersonaConfig holds a single persona's configuration.
+*/
+type PersonaConfig struct {
+	System  string `yaml:"system"`
+	Model   string `yaml:"model"`
+	BaseURL string `yaml:"baseURL"`
+}
+
 type Config struct {
 	AI struct {
+		Thinkcursion struct {
+			Personas map[string]PersonaConfig `yaml:"personas"`
+		} `yaml:"thinkcursion"`
 		Chat struct {
 			TimeoutSeconds int    `yaml:"timeoutSeconds"`
 			DumpFile       string `yaml:"dumpFile"`
