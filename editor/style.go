@@ -108,7 +108,10 @@ func styleChatLine(line string, width int) string {
 		if strings.HasPrefix(trimmed, role.prefix) {
 			colonIdx := strings.Index(line, ":")
 			if colonIdx > 0 {
-				return styleBold + role.color + line[:colonIdx+1] + styleReset + line[colonIdx+1:]
+				label := line[:colonIdx+1]
+				body := line[colonIdx+1:]
+
+				return styleBold + role.color + label + styleReset + body
 			}
 
 			return styleBold + role.color + line + styleReset
