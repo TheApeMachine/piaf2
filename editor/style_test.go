@@ -1,0 +1,199 @@
+package editor
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/smartystreets/goconvey/convey"
+)
+
+func TestStyleChatLines(t *testing.T) {
+	convey.Convey("Given styleChatLines", t, func() {
+
+		convey.Convey("When styling user messages", func() {
+			lines := styleChatLines([]string{"You: hello"}, 80)
+
+			convey.Convey("It should wrap in bold cyan", func() {
+				convey.So(lines[0], convey.ShouldStartWith, styleBold+styleFgCyan)
+				convey.So(lines[0], convey.ShouldEndWith, styleReset)
+				convey.So(lines[0], convey.ShouldContainSubstring, "You: hello")
+			})
+		})
+
+		convey.Convey("When styling system messages", func() {
+			lines := styleChatLines([]string{"System: engaged."}, 80)
+
+			convey.Convey("It should wrap in yellow", func() {
+				convey.So(lines[0], convey.ShouldStartWith, styleFgYellow)
+				convey.So(lines[0], convey.ShouldEndWith, styleReset)
+			})
+		})
+
+		convey.Convey("When styling pipeline info", func() {
+			lines := styleChatLines([]string{"Pipeline: A -> B -> C"}, 80)
+
+			convey.Convey("It should wrap in dim magenta", func() {
+				convey.So(lines[0], convey.ShouldStartWith, styleDim+styleFgMagenta)
+				convey.So(lines[0], convey.ShouldEndWith, styleReset)
+			})
+		})
+
+		convey.Convey("When styling AI role labels", func() {
+			lines := styleChatLines([]string{"Discussion OpenAI: response text"}, 80)
+
+			convey.Convey("It should color the label and reset for the body", func() {
+				convey.So(lines[0], convey.ShouldStartWith, styleBold+styleFgGreen)
+				convey.So(lines[0], convey.ShouldContainSubstring, styleReset+" response text")
+			})
+		})
+
+		convey.Convey("When styling separator lines", func() {
+			lines := styleChatLines([]string{"---"}, 60)
+
+			convey.Convey("It should render a horizontal rule", func() {
+				convey.So(lines[0], convey.ShouldStartWith, styleFgGray+styleDim)
+				convey.So(lines[0], convey.ShouldContainSubstring, separatorChar)
+				convey.So(lines[0], convey.ShouldEndWith, styleReset)
+			})
+		})
+
+		convey.Convey("When styling progress reports", func() {
+			lines := styleChatLines([]string{"Progress: done"}, 80)
+
+			convey.Convey("It should wrap in green", func() {
+				convey.So(lines[0], convey.ShouldStartWith, styleFgGreen)
+				convey.So(lines[0], convey.ShouldEndWith, styleReset)
+			})
+		})
+
+		convey.Convey("When styling plain content", func() {
+			lines := styleChatLines([]string{"just regular text"}, 80)
+
+			convey.Convey("It should pass through unchanged", func() {
+				convey.So(lines[0], convey.ShouldEqual, "just regular text")
+			})
+		})
+
+		convey.Convey("When styling empty lines", func() {
+			lines := styleChatLines([]string{""}, 80)
+
+			convey.Convey("It should pass through unchanged", func() {
+				convey.So(lines[0], convey.ShouldEqual, "")
+			})
+		})
+
+		convey.Convey("When styling welcome text", func() {
+			lines := styleChatLines([]string{"Discussion window ready."}, 80)
+
+			convey.Convey("It should wrap in dim", func() {
+				convey.So(lines[0], convey.ShouldStartWith, styleDim)
+				convey.So(lines[0], convey.ShouldEndWith, styleReset)
+			})
+		})
+
+		convey.Convey("When styling implementation complete", func() {
+			lines := styleChatLines([]string{"Implementation complete. Review the summary."}, 80)
+
+			convey.Convey("It should wrap in bold green", func() {
+				convey.So(lines[0], convey.ShouldStartWith, styleBold+styleFgGreen)
+				convey.So(lines[0], convey.ShouldEndWith, styleReset)
+			})
+		})
+
+		convey.Convey("When styling multiple roles", func() {
+			input := []string{
+				"Project Manager [Claude]: board ready",
+				"Architect [OpenAI]: plan ready",
+				"Team Lead [Gemini]: team assigned",
+				"Developer 1 [Claude]: code done",
+				"QA [OpenAI]: Decision: PASS",
+				"Review [Gemini]: accept",
+			}
+			lines := styleChatLines(input, 80)
+
+			convey.Convey("It should apply distinct colors per role", func() {
+				convey.So(lines[0], convey.ShouldContainSubstring, styleFgBlue)
+				convey.So(lines[1], convey.ShouldContainSubstring, styleFgBlue)
+				convey.So(lines[2], convey.ShouldContainSubstring, styleFgCyan)
+				convey.So(lines[3], convey.ShouldContainSubstring, styleFgGreen)
+				convey.So(lines[4], convey.ShouldContainSubstring, styleFgYellow)
+				convey.So(lines[5], convey.ShouldContainSubstring, styleFgMagenta)
+			})
+		})
+	})
+}
+
+func TestStyleExplorerLines(t *testing.T) {
+	convey.Convey("Given styleExplorerLines", t, func() {
+
+		convey.Convey("When styling directory entries", func() {
+			lines := styleExplorerLines([]string{"docs/", "src/", "main.go", ".."})
+
+			convey.Convey("It should color directories bold blue", func() {
+				convey.So(lines[0], convey.ShouldStartWith, styleBold+styleFgBlue)
+				convey.So(lines[0], convey.ShouldEndWith, styleReset)
+				convey.So(lines[1], convey.ShouldStartWith, styleBold+styleFgBlue)
+			})
+
+			convey.Convey("It should leave regular files unchanged", func() {
+				convey.So(lines[2], convey.ShouldEqual, "main.go")
+			})
+
+			convey.Convey("It should dim the parent entry", func() {
+				convey.So(lines[3], convey.ShouldStartWith, styleDim)
+				convey.So(lines[3], convey.ShouldEndWith, styleReset)
+			})
+		})
+	})
+}
+
+func TestStyleChatLineSeparatorWidth(t *testing.T) {
+	convey.Convey("Given styleChatLine with a separator", t, func() {
+
+		convey.Convey("When width is specified", func() {
+			line := styleChatLine("---", 50)
+
+			convey.Convey("It should produce a separator of that width", func() {
+				inner := strings.TrimPrefix(line, styleFgGray+styleDim)
+				inner = strings.TrimSuffix(inner, styleReset)
+				convey.So(len([]rune(inner)), convey.ShouldEqual, 50)
+			})
+		})
+
+		convey.Convey("When width is zero", func() {
+			line := styleChatLine("---", 0)
+
+			convey.Convey("It should fall back to 40 characters", func() {
+				inner := strings.TrimPrefix(line, styleFgGray+styleDim)
+				inner = strings.TrimSuffix(inner, styleReset)
+				convey.So(len([]rune(inner)), convey.ShouldEqual, 40)
+			})
+		})
+	})
+}
+
+func BenchmarkStyleChatLines(b *testing.B) {
+	lines := []string{
+		"You: hello world",
+		"System: engaged.",
+		"Pipeline: A -> B -> C",
+		"Discussion OpenAI: response text goes here and is moderately long",
+		"",
+		"Developer 1 [Claude]: implementation done",
+		"---",
+		"Progress: step complete",
+		"just some regular text continuation",
+	}
+
+	for b.Loop() {
+		styleChatLines(lines, 80)
+	}
+}
+
+func BenchmarkStyleExplorerLines(b *testing.B) {
+	lines := []string{"..", "cmd/", "editor/", "tui/", "main.go", "go.mod", "README.md"}
+
+	for b.Loop() {
+		styleExplorerLines(lines)
+	}
+}

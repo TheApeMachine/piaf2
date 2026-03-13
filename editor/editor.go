@@ -603,6 +603,8 @@ func (ed *Editor) render() {
 			start := len(lines) - maxLines - offset
 			lines = lines[start : start+maxLines]
 		}
+
+		lines = styleChatLines(lines, ed.buffer.width)
 		cursorRow = len(lines) - 1
 		if cursorRow < 0 {
 			cursorRow = 0
@@ -628,6 +630,8 @@ func (ed *Editor) render() {
 		} else {
 			lines = raw
 		}
+
+		lines = styleExplorerLines(lines)
 		cursorCol = 0
 	}
 
@@ -642,16 +646,16 @@ func (ed *Editor) render() {
 			cursorRow = len(lines) - 1
 		}
 		cursorCol = 0
-		cmdLine = "/ " + ed.palette.Query()
+		cmdLine = styleBold + styleFgGreen + "/ " + styleReset + ed.palette.Query()
 	} else if ed.jumpActive() {
 		lines = ed.jumpLines(lines)
-		cmdLine = "f " + ed.jumpPrefix
+		cmdLine = styleBold + styleFgYellow + "f " + styleReset + ed.jumpPrefix
 	} else if ed.mode == modeCommand {
-		cmdLine = ": " + string(ed.commandLine)
+		cmdLine = styleBold + styleFgYellow + ": " + styleReset + string(ed.commandLine)
 		cursorRow = ed.buffer.height - 1
 		cursorCol = 2 + len(ed.commandLine)
 	} else if ed.mode == modeInsert && ed.inChat {
-		cmdLine = "> " + string(ed.commandLine)
+		cmdLine = styleBold + styleFgCyan + "> " + styleReset + string(ed.commandLine)
 		cursorRow = ed.buffer.height - 1
 		cursorCol = 2 + len(ed.commandLine)
 	}
