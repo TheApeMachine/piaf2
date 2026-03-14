@@ -33,6 +33,9 @@ const (
 	ansiBgBrand     = "\033[48;2;108;80;255m"
 	ansiBgHighlight = "\033[48;2;254;135;255m"
 
+	ansiBgSubtleBrand     = "\033[48;2;22;18;48m"
+	ansiBgSubtleHighlight = "\033[48;2;38;18;38m"
+
 	boxDash = "\u2500"
 )
 
@@ -152,7 +155,7 @@ func styledStatusBar(mode string, width int) string {
 	pill := styledModePill(mode)
 	pillLength := len(mode) + 2
 
-	label := ansiFgBrand + ansiDim + "piaf" + ansiReset
+	label := ansiFgHighlight + ansiDim + "piaf" + ansiReset
 	labelLength := 4
 
 	gap := width - pillLength - labelLength
@@ -170,12 +173,12 @@ func styledModePill(mode string) string {
 	case "NORMAL":
 		return ansiFgGray + ansiDim + content + ansiReset
 	case "INSERT":
-		return ansiBgBrand + ansiFgWhite + ansiBold + content + ansiReset
+		return ansiBgSubtleBrand + ansiFgBrand + ansiBold + content + ansiReset
 	case "COMMAND":
-		return ansiBgHighlight + "\033[38;2;40;0;40m" + ansiBold + content + ansiReset
+		return ansiBgSubtleHighlight + ansiFgHighlight + ansiBold + content + ansiReset
 	case "IMPLEMENT":
-		return ansiBgHighlight + "\033[38;2;40;0;40m" + ansiBold + content + ansiReset
+		return ansiBgSubtleHighlight + ansiFgHighlight + ansiBold + content + ansiReset
 	default:
-		return ansiBgBrand + ansiFgWhite + ansiBold + content + ansiReset
+		return ansiBgSubtleBrand + ansiFgBrand + ansiBold + content + ansiReset
 	}
 }

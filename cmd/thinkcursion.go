@@ -78,7 +78,7 @@ var thinkcursionCmd = &cobra.Command{
 		header := fmt.Sprintf("=== Thinkcursion ===\nPrompt: %s\nPersonas: %s\nStarted: %s\n\n",
 			prompt, strings.Join(names, ", "), time.Now().Format(time.RFC3339))
 		outFile.WriteString(header)
-		fmt.Print(header)
+		fmt.Print(tcHeader(prompt, names, time.Now()))
 
 		transcript := []string{"[User] " + prompt}
 		round := 0
@@ -86,10 +86,12 @@ var thinkcursionCmd = &cobra.Command{
 		for {
 			round++
 			errnie.Info("round", "n", round)
+			fmt.Print(tcRoundBanner(round))
 
 			for _, agent := range agents {
 				if ctx.Err() != nil {
 					fmt.Fprintf(outFile, "\n=== Discussion ended at round %d ===\n", round)
+					fmt.Print(tcEnded(round))
 					errnie.Info("discussion ended", "rounds", round)
 					return nil
 				}
@@ -100,7 +102,7 @@ var thinkcursionCmd = &cobra.Command{
 
 					msg := fmt.Sprintf("\n> %s used tool %s: %v\n", agent.name, name, args)
 					outFile.WriteString(msg)
-					fmt.Print("\033[90m" + msg + "\033[0m") // Dark gray terminal output
+					fmt.Print(tcToolCall(agent.name, name, args))
 
 					return res, err
 				}
@@ -115,17 +117,20 @@ var thinkcursionCmd = &cobra.Command{
 				}
 
 				errnie.Info("turn", "persona", agent.name)
+				fmt.Print(tcPersonaTurn(agent.name))
 				response, genErr := agent.provider.Generate(ctx, request)
 
 				if genErr != nil {
 					if ctx.Err() != nil {
 						fmt.Fprintf(outFile, "\n=== Discussion ended at round %d ===\n", round)
+						fmt.Print(tcEnded(round))
 						return nil
 					}
 
 					errnie.Error(genErr, "persona", agent.name)
 					entry := fmt.Sprintf("[%s] (error: %v)\n\n", agent.name, genErr)
 					outFile.WriteString(entry)
+					fmt.Print(tcError(agent.name, genErr))
 					transcript = append(transcript, entry)
 					continue
 				}
@@ -133,7 +138,7 @@ var thinkcursionCmd = &cobra.Command{
 				entry := fmt.Sprintf("[%s]\n%s\n\n", agent.name, response)
 				outFile.WriteString(entry)
 				outFile.Sync()
-				fmt.Print(entry)
+				fmt.Print(tcResponse(agent.name, response))
 
 				transcript = append(transcript, fmt.Sprintf("[%s] %s", agent.name, response))
 			}
