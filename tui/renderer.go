@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/theapemachine/piaf/wire"
 )
@@ -25,7 +26,14 @@ const (
 	ansiFgMagenta      = "\033[35m"
 	ansiFgCyan         = "\033[36m"
 	ansiFgGray         = "\033[90m"
-	boxDash            = "\u2500"
+	ansiFgWhite        = "\033[97m"
+
+	ansiFgBrand     = "\033[38;2;108;80;255m"
+	ansiFgHighlight = "\033[38;2;254;135;255m"
+	ansiBgBrand     = "\033[48;2;108;80;255m"
+	ansiBgHighlight = "\033[48;2;254;135;255m"
+
+	boxDash = "\u2500"
 )
 
 /*
@@ -115,7 +123,7 @@ func (renderer *Renderer) Write(p []byte) (n int, err error) {
 	if frame.CommandLine != "" {
 		renderer.output = append(renderer.output, frame.CommandLine...)
 	} else if frame.Mode != "" {
-		renderer.output = append(renderer.output, styledMode(frame.Mode)...)
+		renderer.output = append(renderer.output, styledStatusBar(frame.Mode, int(frame.Width))...)
 	}
 
 	row := int(frame.CursorRow) + 1
@@ -140,27 +148,34 @@ func (renderer *Renderer) Close() error {
 	return nil
 }
 
-func styledMode(mode string) string {
-	border := boxDash + boxDash
+func styledStatusBar(mode string, width int) string {
+	pill := styledModePill(mode)
+	pillLen := len(mode) + 2
+
+	label := ansiFgBrand + ansiDim + "piaf" + ansiReset
+	labelLen := 4
+
+	gap := width - pillLen - labelLen
+	if gap < 0 {
+		gap = 0
+	}
+
+	return pill + strings.Repeat(" ", gap) + label
+}
+
+func styledModePill(mode string) string {
+	content := " " + mode + " "
 
 	switch mode {
 	case "NORMAL":
-		return ansiFgGray + ansiDim + border + " NORMAL " + border + ansiReset
+		return ansiFgGray + ansiDim + content + ansiReset
 	case "INSERT":
-		return ansiBold + ansiFgGreen + border + " INSERT " + border + ansiReset
+		return ansiBgBrand + ansiFgWhite + ansiBold + content + ansiReset
 	case "COMMAND":
-		return ansiBold + ansiFgYellow + border + " COMMAND " + border + ansiReset
-	case "CHAT":
-		return ansiBold + ansiFgCyan + border + " CHAT " + border + ansiReset
+		return ansiBgHighlight + "\033[38;2;40;0;40m" + ansiBold + content + ansiReset
 	case "IMPLEMENT":
-		return ansiBold + ansiFgMagenta + border + " IMPLEMENT " + border + ansiReset
-	case "PALETTE":
-		return ansiBold + ansiFgYellow + border + " PALETTE " + border + ansiReset
-	case "EXPLORER":
-		return ansiBold + ansiFgBlue + border + " EXPLORER " + border + ansiReset
-	case "BOARD":
-		return ansiBold + ansiFgBlue + border + " BOARD " + border + ansiReset
+		return ansiBgHighlight + "\033[38;2;40;0;40m" + ansiBold + content + ansiReset
 	default:
-		return border + " " + mode + " " + border
+		return ansiBgBrand + ansiFgWhite + ansiBold + content + ansiReset
 	}
 }

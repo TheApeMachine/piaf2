@@ -76,6 +76,9 @@ var rootCmd = &cobra.Command{
 		app := tui.NewApp(tui.AppWithEditor(ed), tui.AppWithQuitWriter(quitWrite))
 		defer app.Close()
 
+		intro := tui.NewIntro(width, height)
+		io.Copy(os.Stdout, intro)
+
 		buf := make([]byte, 256)
 		io.Copy(os.Stdout, app)
 
