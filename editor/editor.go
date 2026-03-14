@@ -646,16 +646,16 @@ func (ed *Editor) render() {
 			cursorRow = len(lines) - 1
 		}
 		cursorCol = 0
-		cmdLine = styleBold + styleFgGreen + "/ " + styleReset + ed.palette.Query()
+		cmdLine = styleBold + styleFgBrand + "/ " + styleReset + ed.palette.Query()
 	} else if ed.jumpActive() {
 		lines = ed.jumpLines(lines)
-		cmdLine = styleBold + styleFgYellow + "f " + styleReset + ed.jumpPrefix
+		cmdLine = styleBold + styleFgHighlight + "f " + styleReset + ed.jumpPrefix
 	} else if ed.mode == modeCommand {
-		cmdLine = styleBold + styleFgYellow + ": " + styleReset + string(ed.commandLine)
+		cmdLine = styleBold + styleFgBrand + ": " + styleReset + string(ed.commandLine)
 		cursorRow = ed.buffer.height - 1
 		cursorCol = 2 + len(ed.commandLine)
 	} else if ed.mode == modeInsert && ed.inChat {
-		cmdLine = styleBold + styleFgCyan + "> " + styleReset + string(ed.commandLine)
+		cmdLine = styleBold + styleFgHighlight + "> " + styleReset + string(ed.commandLine)
 		cursorRow = ed.buffer.height - 1
 		cursorCol = 2 + len(ed.commandLine)
 	}

@@ -13,21 +13,26 @@ const (
 	styleFgMagenta = "\033[35m"
 	styleFgCyan    = "\033[36m"
 	styleFgGray    = "\033[90m"
-	separatorChar  = "\u2500"
+
+	styleFgBrand     = "\033[38;2;108;80;255m"
+	styleFgHighlight = "\033[38;2;254;135;255m"
+	styleBgBrand     = "\033[48;2;108;80;255m"
+
+	separatorChar = "\u2500"
 )
 
 var chatRoleStyles = []struct {
 	prefix string
 	color  string
 }{
-	{"Discussion ", styleFgGreen},
-	{"PM Summary", styleFgBlue},
-	{"Project Manager", styleFgBlue},
-	{"Architect", styleFgBlue},
-	{"Team Lead", styleFgCyan},
+	{"Discussion ", styleFgBrand},
+	{"PM Summary", styleFgBrand},
+	{"Project Manager", styleFgBrand},
+	{"Architect", styleFgHighlight},
+	{"Team Lead", styleFgBrand},
 	{"Developer", styleFgGreen},
 	{"QA", styleFgYellow},
-	{"Review", styleFgMagenta},
+	{"Review", styleFgHighlight},
 }
 
 /*
@@ -57,11 +62,11 @@ func styleChatLine(line string, width int) string {
 			separatorWidth = 40
 		}
 
-		return styleFgGray + styleDim + strings.Repeat(separatorChar, separatorWidth) + styleReset
+		return styleFgBrand + styleDim + strings.Repeat(separatorChar, separatorWidth) + styleReset
 	}
 
 	if strings.HasPrefix(trimmed, "You:") {
-		return styleBold + styleFgCyan + line + styleReset
+		return styleBold + styleFgBrand + line + styleReset
 	}
 
 	if strings.HasPrefix(trimmed, "System:") {
@@ -69,7 +74,7 @@ func styleChatLine(line string, width int) string {
 	}
 
 	if strings.HasPrefix(trimmed, "Pipeline:") || strings.HasPrefix(trimmed, "Team:") {
-		return styleDim + styleFgMagenta + line + styleReset
+		return styleDim + styleFgHighlight + line + styleReset
 	}
 
 	if strings.HasPrefix(trimmed, "Progress:") {
@@ -77,7 +82,7 @@ func styleChatLine(line string, width int) string {
 	}
 
 	if strings.HasPrefix(trimmed, "Assignment:") {
-		return styleFgCyan + line + styleReset
+		return styleFgBrand + line + styleReset
 	}
 
 	if strings.HasPrefix(trimmed, "Channel coordination:") {
@@ -85,11 +90,11 @@ func styleChatLine(line string, width int) string {
 	}
 
 	if strings.HasPrefix(trimmed, "Review:") {
-		return styleBold + styleFgMagenta + line + styleReset
+		return styleBold + styleFgHighlight + line + styleReset
 	}
 
 	if strings.HasPrefix(trimmed, "Project board:") {
-		return styleBold + styleFgBlue + line + styleReset
+		return styleBold + styleFgBrand + line + styleReset
 	}
 
 	if strings.HasPrefix(trimmed, "Implementation complete.") {
@@ -131,7 +136,7 @@ func styleExplorerLines(lines []string) []string {
 	for index, line := range lines {
 		switch {
 		case strings.HasSuffix(line, "/"):
-			styled[index] = styleBold + styleFgBlue + line + styleReset
+			styled[index] = styleBold + styleFgBrand + line + styleReset
 		case line == "..":
 			styled[index] = styleDim + line + styleReset
 		default:
