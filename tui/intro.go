@@ -94,22 +94,22 @@ func (intro *Intro) generateFrames() {
 
 	clear := ansiEnterAlternate + ansiHideCursor + ansiCursorHome + ansiClearDown
 
-	for charIdx := 0; charIdx < len(logo); charIdx++ {
+	for characterIndex := 0; characterIndex < len(logo); characterIndex++ {
 		var buf []byte
 		buf = append(buf, clear...)
 		buf = append(buf, fmt.Sprintf(ansiCursorPos, centerRow, logoCol)...)
 
-		for prev := 0; prev < charIdx; prev++ {
+		for previousIndex := 0; previousIndex < characterIndex; previousIndex++ {
 			buf = append(buf, fmt.Sprintf("\033[38;2;%d;%d;%dm", brandR, brandG, brandB)...)
 			buf = append(buf, ansiBold...)
-			buf = append(buf, logo[prev])
+			buf = append(buf, logo[previousIndex])
 			buf = append(buf, ansiReset...)
 		}
 
 		buf = append(buf, fmt.Sprintf("\033[48;2;%d;%d;%dm", glowR, glowG, glowB)...)
 		buf = append(buf, fmt.Sprintf("\033[38;2;%d;%d;%dm", highlightR, highlightG, highlightB)...)
 		buf = append(buf, ansiBold...)
-		buf = append(buf, logo[charIdx])
+		buf = append(buf, logo[characterIndex])
 		buf = append(buf, ansiReset...)
 
 		intro.frames = append(intro.frames, buf)
@@ -134,7 +134,7 @@ func (intro *Intro) generateFrames() {
 	}
 
 	fullTagFg := fmt.Sprintf("\033[38;2;%d;%d;%dm", highlightR, highlightG, highlightB)
-	for hold := 0; hold < 3; hold++ {
+	for holdIndex := 0; holdIndex < 3; holdIndex++ {
 		var buf []byte
 		buf = append(buf, clear...)
 		buf = append(buf, fmt.Sprintf(ansiCursorPos, centerRow, logoCol)...)

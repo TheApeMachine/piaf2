@@ -150,12 +150,12 @@ func (renderer *Renderer) Close() error {
 
 func styledStatusBar(mode string, width int) string {
 	pill := styledModePill(mode)
-	pillLen := len(mode) + 2
+	pillLength := len(mode) + 2
 
 	label := ansiFgBrand + ansiDim + "piaf" + ansiReset
-	labelLen := 4
+	labelLength := 4
 
-	gap := width - pillLen - labelLen
+	gap := width - pillLength - labelLength
 	if gap < 0 {
 		gap = 0
 	}
