@@ -25,7 +25,7 @@ ai:
           - Build on others' ideas by abstracting them into more general frameworks.
           - Concede gracefully when someone finds a genuine counterexample.
           - Keep responses focused and under 300 words.
-        model: openai/gpt-oss-20b
+        model: zai-org/glm-4.7-flash
         baseURL: http://localhost:1234/v1
       philosopher:
         system: |
@@ -54,7 +54,7 @@ ai:
           - Acknowledge when a formal framework genuinely captures something important.
           - Play devil's advocate when consensus forms too quickly.
           - Keep responses focused and under 300 words.
-        model: openai/gpt-oss-20b
+        model: zai-org/glm-4.7-flash
         baseURL: http://localhost:1234/v1
       ai_researcher:
         system: |
@@ -87,7 +87,7 @@ ai:
           - Bring up specific papers, experiments, or biological systems as evidence.
           - Get excited when ideas from different domains converge.
           - Keep responses focused and under 300 words.
-        model: openai/gpt-oss-20b
+        model: zai-org/glm-4.7-flash
         baseURL: http://localhost:1234/v1
   chat:
     # Per-stage timeout in seconds (browse/read/recall add round-trips). Default 180.
