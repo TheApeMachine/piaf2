@@ -636,17 +636,10 @@ func (ed *Editor) render() {
 	}
 
 	if ed.inPalette && ed.palette != nil {
-		lines = ed.palette.Results()
-		maxLines := ed.buffer.height - 1
-		if maxLines > 0 && len(lines) > maxLines {
-			lines = lines[:maxLines]
-		}
-		cursorRow = ed.palette.Cursor()
-		if cursorRow >= len(lines) {
-			cursorRow = len(lines) - 1
-		}
+		lines = stylePaletteOverlay(lines, ed.palette, ed.buffer.width, ed.buffer.height)
+		cursorRow = 0
 		cursorCol = 0
-		cmdLine = styleBold + styleFgBrand + "/ " + styleReset + ed.palette.Query()
+		cmdLine = ""
 	} else if ed.jumpActive() {
 		lines = ed.jumpLines(lines)
 		cmdLine = styleBold + styleFgHighlight + "f " + styleReset + ed.jumpPrefix
