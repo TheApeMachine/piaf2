@@ -38,15 +38,11 @@ func TestIntroRead(t *testing.T) {
 		convey.Convey("When Read is called", func() {
 			data, err := io.ReadAll(intro)
 
-			convey.Convey("It should produce ANSI output containing the logo characters and tagline", func() {
+			convey.Convey("It should produce ANSI output with animation frames and branding", func() {
 				convey.So(err, convey.ShouldBeNil)
-				output := string(data)
 				convey.So(len(data), convey.ShouldBeGreaterThan, 0)
-				convey.So(output, convey.ShouldContainSubstring, "p")
-				convey.So(output, convey.ShouldContainSubstring, "i")
-				convey.So(output, convey.ShouldContainSubstring, "a")
-				convey.So(output, convey.ShouldContainSubstring, "f")
-				convey.So(output, convey.ShouldContainSubstring, "A.I. Code Editor")
+				convey.So(len(intro.frames), convey.ShouldBeGreaterThan, 10)
+				convey.So(string(data), convey.ShouldContainSubstring, "A.I. Code Editor")
 			})
 		})
 	})
