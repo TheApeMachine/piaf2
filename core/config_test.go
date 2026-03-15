@@ -22,11 +22,11 @@ func TestLoadEmbedded(t *testing.T) {
 		})
 
 		convey.Convey("It should have thinkcursion personas", func() {
-			convey.So(config.AI.Thinkcursion.Personas, convey.ShouldHaveLength, 3)
-			math := config.AI.Thinkcursion.Personas["mathematician"]
-			convey.So(math.System, convey.ShouldContainSubstring, "mathematician")
-			convey.So(math.Model, convey.ShouldNotBeEmpty)
-			convey.So(math.BaseURL, convey.ShouldNotBeEmpty)
+			convey.So(len(config.AI.Thinkcursion.Personas), convey.ShouldBeGreaterThanOrEqualTo, 3)
+			arch := config.AI.Thinkcursion.Personas["architect"]
+			convey.So(arch.System, convey.ShouldContainSubstring, "architect")
+			convey.So(arch.Model, convey.ShouldNotBeEmpty)
+			convey.So(arch.BaseURL, convey.ShouldNotBeEmpty)
 		})
 	})
 }

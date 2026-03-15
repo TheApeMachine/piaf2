@@ -145,6 +145,10 @@ func BuildUserPrompt(request *Request) string {
 		lines = append(lines, "", "Return implementation-focused guidance. The last stage should mention accept or reject.")
 	}
 
+	if request.Mode == "DISCUSS" && len(request.Transcript) > 1 {
+		lines = append(lines, "", "Your turn. Reply directly to what others have said. Do not repeat points already in the transcript; add something new, challenge a specific claim, or synthesize toward a conclusion.")
+	}
+
 	return strings.Join(lines, "\n")
 }
 
