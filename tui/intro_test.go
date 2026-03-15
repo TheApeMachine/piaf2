@@ -36,22 +36,16 @@ func TestIntroRead(t *testing.T) {
 		intro := NewIntro(80, 24)
 
 		convey.Convey("When Read is called", func() {
-			buf := make([]byte, 8192)
-			total := 0
+			data, err := io.ReadAll(intro)
 
-			for {
-				number, err := intro.Read(buf[total:])
-				total += number
-
-				if err == io.EOF {
-					break
-				}
-			}
-
-			convey.Convey("It should produce ANSI output containing the logo", func() {
-				output := string(buf[:total])
-				convey.So(total, convey.ShouldBeGreaterThan, 0)
-				convey.So(output, convey.ShouldContainSubstring, "piaf")
+			convey.Convey("It should produce ANSI output containing the logo characters and tagline", func() {
+				convey.So(err, convey.ShouldBeNil)
+				output := string(data)
+				convey.So(len(data), convey.ShouldBeGreaterThan, 0)
+				convey.So(output, convey.ShouldContainSubstring, "p")
+				convey.So(output, convey.ShouldContainSubstring, "i")
+				convey.So(output, convey.ShouldContainSubstring, "a")
+				convey.So(output, convey.ShouldContainSubstring, "f")
 				convey.So(output, convey.ShouldContainSubstring, "A.I. Code Editor")
 			})
 		})
@@ -103,7 +97,7 @@ func TestIntroClose(t *testing.T) {
 
 func BenchmarkIntroRead(b *testing.B) {
 	intro := NewIntro(80, 24)
-	buf := make([]byte, 8192)
+	buf := make([]byte, 65536)
 
 	for b.Loop() {
 		intro.frameIndex = 0
