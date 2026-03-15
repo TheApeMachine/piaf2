@@ -8,6 +8,10 @@ import (
 )
 
 const introFrameDelay = 40 * time.Millisecond
+const introHoldFrames = 16
+const introRainbowFadeFrames = 5.0
+const introRainbowShimmerSpeed = 0.4
+const introRainbowBrightness = 0.6
 
 /*
 Intro renders a branded splash animation with particle trails, gradient sweeps,
@@ -257,7 +261,7 @@ func (intro *Intro) generateFrames() {
 		intro.frames = append(intro.frames, buf)
 	}
 
-	holdCount := 16
+	holdCount := introHoldFrames
 	rainbowRow := centerRow + 5
 
 	rainbowHues := [][3]int{
@@ -327,7 +331,7 @@ func (intro *Intro) generateFrames() {
 		buf = append(buf, ansiReset...)
 
 		if rainbowRow >= 1 && rainbowRow <= intro.height {
-			rainbowFade := math.Min(float64(holdIdx)/5.0, 1.0)
+			rainbowFade := math.Min(float64(holdIdx)/introRainbowFadeFrames, 1.0)
 			rainbowWidth := intro.width / 3
 			rainbowStart := intro.width/2 - rainbowWidth/2
 
@@ -338,14 +342,14 @@ func (intro *Intro) generateFrames() {
 			buf = append(buf, fmt.Sprintf(ansiCursorPos, rainbowRow, rainbowStart)...)
 
 			for rbIdx := 0; rbIdx < rainbowWidth; rbIdx++ {
-				huePos := (float64(rbIdx)/float64(rainbowWidth))*float64(len(rainbowHues)-1) + float64(holdIdx)*0.4
+				huePos := (float64(rbIdx)/float64(rainbowWidth))*float64(len(rainbowHues)-1) + float64(holdIdx)*introRainbowShimmerSpeed
 				hueIdx := int(huePos) % len(rainbowHues)
 				hueFrac := huePos - math.Floor(huePos)
 				nextHue := (hueIdx + 1) % len(rainbowHues)
 
-				rbR := introClamp(int(float64(introLerp(rainbowHues[hueIdx][0], rainbowHues[nextHue][0], hueFrac))*rainbowFade*0.6), 0, 255)
-				rbG := introClamp(int(float64(introLerp(rainbowHues[hueIdx][1], rainbowHues[nextHue][1], hueFrac))*rainbowFade*0.6), 0, 255)
-				rbB := introClamp(int(float64(introLerp(rainbowHues[hueIdx][2], rainbowHues[nextHue][2], hueFrac))*rainbowFade*0.6), 0, 255)
+				rbR := introClamp(int(float64(introLerp(rainbowHues[hueIdx][0], rainbowHues[nextHue][0], hueFrac))*rainbowFade*introRainbowBrightness), 0, 255)
+				rbG := introClamp(int(float64(introLerp(rainbowHues[hueIdx][1], rainbowHues[nextHue][1], hueFrac))*rainbowFade*introRainbowBrightness), 0, 255)
+				rbB := introClamp(int(float64(introLerp(rainbowHues[hueIdx][2], rainbowHues[nextHue][2], hueFrac))*rainbowFade*introRainbowBrightness), 0, 255)
 
 				buf = append(buf, fmt.Sprintf("\033[38;2;%d;%d;%dm", rbR, rbG, rbB)...)
 				buf = append(buf, "\u2501"...)
