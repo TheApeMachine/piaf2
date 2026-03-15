@@ -227,7 +227,7 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 			query := palette.Query()
 			prompt := styleFgBrand + styleBold + " / " + styleReset + styleBgPopup + styleFgSearchBox + query
 
-			pad := innerWidth - 3 - runeWidth(query)
+			pad := innerWidth - 3 - runeCount(query)
 			if pad < 0 {
 				pad = 0
 			}
@@ -262,7 +262,7 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 			if resultIdx >= 0 && resultIdx < len(results) {
 				text := results[resultIdx]
 
-				if runeWidth(text) > innerWidth-1 {
+				if runeCount(text) > innerWidth-1 {
 					trimmed := []rune(text)
 
 					if len(trimmed) > innerWidth-1 {
@@ -272,7 +272,7 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 					text = string(trimmed)
 				}
 
-				pad := innerWidth - 1 - runeWidth(text)
+				pad := innerWidth - 1 - runeCount(text)
 				if pad < 0 {
 					pad = 0
 				}
@@ -311,7 +311,7 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 	return out
 }
 
-func runeWidth(s string) int {
+func runeCount(s string) int {
 	count := 0
 
 	for range s {
