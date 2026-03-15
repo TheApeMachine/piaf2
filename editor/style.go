@@ -193,7 +193,7 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 		startRow = 0
 	}
 
-	startCol := (width - popupWidth) / 2
+	leftPad := (width - popupWidth) / 2
 	innerWidth := popupWidth - 2
 
 	for len(bgLines) < height-1 {
@@ -201,6 +201,7 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 	}
 
 	out := make([]string, len(bgLines))
+	margin := strings.Repeat(" ", leftPad)
 
 	for row := range bgLines {
 		rel := row - startRow
@@ -210,23 +211,9 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 			continue
 		}
 
-		bg := bgLines[row]
-		bgRunes := []rune(bg)
-
 		var line strings.Builder
 		line.Grow(popupWidth + 128)
-
-		if startCol > 0 && len(bgRunes) > 0 {
-			end := startCol
-
-			if end > len(bgRunes) {
-				end = len(bgRunes)
-			}
-
-			line.WriteString(styleDim)
-			line.WriteString(string(bgRunes[:end]))
-			line.WriteString(styleReset)
-		}
+		line.WriteString(margin)
 
 		switch {
 		case rel == 0:
@@ -275,8 +262,14 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 			if resultIdx >= 0 && resultIdx < len(results) {
 				text := results[resultIdx]
 
-				if len(text) > innerWidth-1 {
-					text = text[:innerWidth-1]
+				if runeWidth(text) > innerWidth-1 {
+					trimmed := []rune(text)
+
+					if len(trimmed) > innerWidth-1 {
+						trimmed = trimmed[:innerWidth-1]
+					}
+
+					text = string(trimmed)
 				}
 
 				pad := innerWidth - 1 - runeWidth(text)
@@ -286,9 +279,9 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 
 				isSelected := resultIdx == palette.Cursor()
 
-				bg := styleBgPopup
+				rowBg := styleBgPopup
 				if isSelected {
-					bg = styleBgSelected
+					rowBg = styleBgSelected
 				}
 
 				fg := styleFgDim
@@ -296,13 +289,13 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 					fg = styleFgHighlight
 				}
 
-				line.WriteString(bg + styleFgBorder + boxVertical + styleReset)
-				line.WriteString(bg + fg)
+				line.WriteString(rowBg + styleFgBorder + boxVertical + styleReset)
+				line.WriteString(rowBg + fg)
 				line.WriteString(" ")
 				line.WriteString(text)
 				line.WriteString(strings.Repeat(" ", pad))
 				line.WriteString(styleReset)
-				line.WriteString(bg + styleFgBorder + boxVertical + styleReset)
+				line.WriteString(rowBg + styleFgBorder + boxVertical + styleReset)
 			} else {
 				line.WriteString(styleBgPopup + styleFgBorder + boxVertical + styleReset)
 				line.WriteString(styleBgPopup)
@@ -310,13 +303,6 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 				line.WriteString(styleReset)
 				line.WriteString(styleBgPopup + styleFgBorder + boxVertical + styleReset)
 			}
-		}
-
-		after := startCol + popupWidth
-		if after < len(bgRunes) {
-			line.WriteString(styleDim)
-			line.WriteString(string(bgRunes[after:]))
-			line.WriteString(styleReset)
 		}
 
 		out[row] = line.String()
