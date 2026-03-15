@@ -434,7 +434,7 @@ func TestEditorPalette(t *testing.T) {
 			convey.Convey("It should show the palette with commands", func() {
 				convey.So(ed.inPalette, convey.ShouldBeTrue)
 				convey.So(frame, convey.ShouldNotBeNil)
-				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "/ ")
+				convey.So(frame.Mode, convey.ShouldEqual, "PALETTE")
 				convey.So(len(frame.Lines), convey.ShouldBeGreaterThan, 0)
 			})
 		})
