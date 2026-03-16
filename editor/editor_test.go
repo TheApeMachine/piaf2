@@ -366,9 +366,9 @@ func TestEditorRenderSyntaxHighlighting(t *testing.T) {
 
 			convey.Convey("It should include syntax highlighting for the buffer", func() {
 				convey.So(frame, convey.ShouldNotBeNil)
-				convey.So(frame.Lines[0], convey.ShouldContainSubstring, styleBold+styleFgMagenta+"package"+styleReset)
-				convey.So(frame.Lines[2], convey.ShouldContainSubstring, styleFgYellow+"42"+styleReset)
-				convey.So(frame.Lines[2], convey.ShouldContainSubstring, styleDim+styleFgGray+"// answer"+styleReset)
+				convey.So(frame.Lines[0], convey.ShouldContainSubstring, styleBold+syntaxKeyword()+"package"+styleReset)
+				convey.So(frame.Lines[2], convey.ShouldContainSubstring, syntaxNumber()+"42"+styleReset)
+				convey.So(frame.Lines[2], convey.ShouldContainSubstring, syntaxComment()+"// answer"+styleReset)
 			})
 		})
 
