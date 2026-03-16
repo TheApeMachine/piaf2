@@ -9,6 +9,7 @@ import (
 var (
 	kanbanEpicRe  = regexp.MustCompile(`(?m)^##\s+Epic:\s*(.+)$`)
 	kanbanStoryRe = regexp.MustCompile(`(?m)^###\s+Story:\s*(.+)$`)
+	kanbanTaskRe  = regexp.MustCompile(`(?m)^####\s+Task:\s*(.+)$`)
 )
 
 /*
@@ -32,8 +33,10 @@ func (parser *KanbanParser) Parse(text string) *Kanban {
 
 	lines := strings.Split(text, "\n")
 	var currentEpic *Epic
+	var currentStory *Story
 	epicIdx := 0
 	storyIdx := 0
+	taskIdx := 0
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -78,6 +81,8 @@ func (parser *KanbanParser) Parse(text string) *Kanban {
 						status = StatusInProgress
 					case "backlog":
 						status = StatusBacklog
+					case "review":
+						status = StatusReview
 					}
 				}
 				storyIdx++
@@ -90,6 +95,8 @@ func (parser *KanbanParser) Parse(text string) *Kanban {
 					story.EpicID = currentEpic.ID
 					currentEpic.Stories = append(currentEpic.Stories, story)
 					kanban.Epics[len(kanban.Epics)-1] = *currentEpic
+					currentEpic = &kanban.Epics[len(kanban.Epics)-1]
+					currentStory = &currentEpic.Stories[len(currentEpic.Stories)-1]
 				} else {
 					kanban.Epics = append(kanban.Epics, Epic{
 						ID:      fmt.Sprintf("epic-%d", epicIdx+1),
@@ -97,8 +104,21 @@ func (parser *KanbanParser) Parse(text string) *Kanban {
 						Stories: []Story{story},
 					})
 					currentEpic = &kanban.Epics[len(kanban.Epics)-1]
+					currentStory = &currentEpic.Stories[0]
 					epicIdx++
 				}
+			}
+		} else if kanbanTaskRe.MatchString(line) {
+			matches := kanbanTaskRe.FindStringSubmatch(line)
+			if len(matches) >= 2 && currentStory != nil {
+				title := strings.TrimSpace(matches[1])
+				if title == "" {
+					continue
+				}
+				taskIdx++
+				tid := fmt.Sprintf("task-%d-%d-%d", epicIdx, storyIdx, taskIdx)
+				task := Task{ID: tid, Title: title, Status: StatusTodo, StoryID: currentStory.ID}
+				currentStory.Tasks = append(currentStory.Tasks, task)
 			}
 		}
 	}

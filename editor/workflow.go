@@ -113,6 +113,57 @@ func (workflow *Workflow) BoardLines() []string {
 }
 
 /*
+AddEpic appends a new epic, creating the kanban if needed. Saves and refreshes board.
+*/
+func (workflow *Workflow) AddEpic(title string) {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	if workflow.kanban == nil {
+		workflow.kanban = &team.Kanban{}
+	}
+
+	workflow.kanban.AddEpic(title)
+	workflow.board = workflow.kanban.Board()
+	workflow.developerTasks = workflow.kanban.DeveloperTasks(maxAssignedDevelopers)
+	workflow.SaveKanban()
+}
+
+/*
+AddStory appends a story to the last epic. Creates General epic if none exist. Saves and refreshes board.
+*/
+func (workflow *Workflow) AddStory(title string) {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	if workflow.kanban == nil {
+		workflow.kanban = &team.Kanban{}
+	}
+
+	workflow.kanban.AddStory(-1, title)
+	workflow.board = workflow.kanban.Board()
+	workflow.developerTasks = workflow.kanban.DeveloperTasks(maxAssignedDevelopers)
+	workflow.SaveKanban()
+}
+
+/*
+AddTask appends a task to the last story. Creates General epic/story if none exist. Saves and refreshes board.
+*/
+func (workflow *Workflow) AddTask(title string) {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	if workflow.kanban == nil {
+		workflow.kanban = &team.Kanban{}
+	}
+
+	workflow.kanban.AddTask(-1, -1, title)
+	workflow.board = workflow.kanban.Board()
+	workflow.developerTasks = workflow.kanban.DeveloperTasks(maxAssignedDevelopers)
+	workflow.SaveKanban()
+}
+
+/*
 SetKanban stores the PM-derived kanban and updates board and developer tasks.
 */
 func (workflow *Workflow) SetKanban(kanban *team.Kanban) {
@@ -125,14 +176,19 @@ func (workflow *Workflow) SetKanban(kanban *team.Kanban) {
 
 	workflow.kanban = kanban
 	workflow.board = kanban.Board()
-	workflow.developerTasks = kanban.DeveloperTasks(maxAssignedDevelopers)
+
+	maxDevs := maxAssignedDevelopers
+	if workflow.plan != nil && workflow.plan.DeveloperCount > 0 {
+		maxDevs = workflow.plan.DeveloperCount
+	}
+
+	workflow.developerTasks = kanban.DeveloperTasks(maxDevs)
 	workflow.SaveKanban()
 	workflow.board = append(workflow.board,
 		"Coordinate developer intents and unblock overlapping changes",
 		"Write unit and integration coverage",
 		"Prepare the implementation review for :accept or :reject",
 	)
-	workflow.developerTasks = kanban.DeveloperTasks(maxAssignedDevelopers)
 }
 
 /*
@@ -156,13 +212,25 @@ func (workflow *Workflow) ImplementationPlan() *team.ImplementationPlan {
 }
 
 /*
-SetImplementationPlan stores the Architect-produced plan.
+SetImplementationPlan stores the Architect-produced plan and refreshes developer tasks
+using plan.DeveloperCount when set (Architect-driven parallelizability).
 */
 func (workflow *Workflow) SetImplementationPlan(plan *team.ImplementationPlan) {
 	workflow.mu.Lock()
 	defer workflow.mu.Unlock()
 
 	workflow.plan = plan
+
+	if workflow.kanban == nil {
+		return
+	}
+
+	maxDevs := maxAssignedDevelopers
+	if plan != nil && plan.DeveloperCount > 0 {
+		maxDevs = plan.DeveloperCount
+	}
+
+	workflow.developerTasks = workflow.kanban.DeveloperTasks(maxDevs)
 }
 
 /*

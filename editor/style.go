@@ -269,7 +269,7 @@ func styleChatLine(line string, width int) string {
 			return styleBold + styleFgBrand() + line + styleReset
 		}
 
-		if strings.HasPrefix(trimmed, "Press i to") {
+		if strings.HasPrefix(trimmed, "Press i to") || strings.HasPrefix(trimmed, "Tab or i:") {
 			return styleDim + line + styleReset
 		}
 

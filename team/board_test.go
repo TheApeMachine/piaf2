@@ -48,6 +48,55 @@ func TestKanbanBoard(t *testing.T) {
 	})
 }
 
+func TestKanbanAddEpicStoryTask(t *testing.T) {
+	convey.Convey("AddEpic appends an epic", t, func() {
+		kanban := &Kanban{}
+		kanban.AddEpic("Auth flow")
+		convey.So(len(kanban.Epics), convey.ShouldEqual, 1)
+		convey.So(kanban.Epics[0].Title, convey.ShouldEqual, "Auth flow")
+		convey.So(kanban.Epics[0].ID, convey.ShouldEqual, "epic-1")
+	})
+
+	convey.Convey("AddStory with no epics creates General epic first", t, func() {
+		kanban := &Kanban{}
+		kanban.AddStory(-1, "Login")
+		convey.So(len(kanban.Epics), convey.ShouldEqual, 1)
+		convey.So(kanban.Epics[0].Title, convey.ShouldEqual, "General")
+		convey.So(len(kanban.Epics[0].Stories), convey.ShouldEqual, 1)
+		convey.So(kanban.Epics[0].Stories[0].Title, convey.ShouldEqual, "Login")
+	})
+
+	convey.Convey("Given a Kanban with one epic", t, func() {
+		kanban := &Kanban{}
+		kanban.AddEpic("Auth")
+		kanban.AddStory(-1, "Login")
+		kanban.AddStory(-1, "Logout")
+
+		convey.Convey("Stories belong to the epic", func() {
+			convey.So(len(kanban.Epics[0].Stories), convey.ShouldEqual, 2)
+			convey.So(kanban.Epics[0].Stories[0].Title, convey.ShouldEqual, "Login")
+			convey.So(kanban.Epics[0].Stories[1].Title, convey.ShouldEqual, "Logout")
+		})
+
+		convey.Convey("AddTask appends to last story", func() {
+			kanban.AddTask(-1, -1, "Add unit tests")
+			convey.So(len(kanban.Epics[0].Stories[1].Tasks), convey.ShouldEqual, 1)
+			convey.So(kanban.Epics[0].Stories[1].Tasks[0].Title, convey.ShouldEqual, "Add unit tests")
+		})
+	})
+
+	convey.Convey("FormatForPM serializes to PM format", t, func() {
+		kanban := &Kanban{}
+		kanban.AddEpic("Feature X")
+		kanban.AddStory(-1, "Story A")
+		kanban.AddTask(-1, -1, "Task 1")
+		out := kanban.FormatForPM()
+		convey.So(out, convey.ShouldContainSubstring, "## Epic: Feature X")
+		convey.So(out, convey.ShouldContainSubstring, "### Story: Story A")
+		convey.So(out, convey.ShouldContainSubstring, "#### Task: Task 1")
+	})
+}
+
 func BenchmarkKanbanBoard(b *testing.B) {
 	kanban := &Kanban{
 		Epics: []Epic{

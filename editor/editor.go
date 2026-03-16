@@ -338,7 +338,13 @@ func (ed *Editor) handleRune(r rune) {
 	}
 
 	if ed.inPalette {
-		ed.palette.Append(r)
+		if r == '\t' {
+			ed.inPalette = false
+			ed.palette = nil
+			ed.openWorkflowPrompt()
+		} else {
+			ed.palette.Append(r)
+		}
 		ed.render()
 
 		return
@@ -354,7 +360,9 @@ func (ed *Editor) handleRune(r rune) {
 	case modeCommand:
 		ed.commandLine = append(ed.commandLine, r)
 	default:
-		if !ed.handleJumpRune(r) {
+		if r == '\t' {
+			ed.openWorkflowPrompt()
+		} else if !ed.handleJumpRune(r) {
 			if ed.inExplorer {
 				ed.applyExplorerCommand(r)
 			} else if ed.inChat {
@@ -511,6 +519,34 @@ func (ed *Editor) executeCommand() {
 		case "reject":
 			if ed.chat != nil && ed.chat.Mode() == "IMPLEMENT" {
 				ed.chat.Reject()
+			}
+		case "epic":
+			if ed.chat != nil && ed.chat.Mode() == "IMPLEMENT" && arg != "" {
+				ed.chat.AddEpic(arg)
+				if ed.inKanban {
+					ed.kanbanView = NewKanbanView(ed.chat.Kanban(), ed.buffer.width)
+				}
+			}
+		case "story":
+			if ed.chat != nil && ed.chat.Mode() == "IMPLEMENT" && arg != "" {
+				ed.chat.AddStory(arg)
+				if ed.inKanban {
+					ed.kanbanView = NewKanbanView(ed.chat.Kanban(), ed.buffer.width)
+				}
+			}
+		case "task":
+			if ed.chat != nil && ed.chat.Mode() == "IMPLEMENT" && arg != "" {
+				ed.chat.AddTask(arg)
+				if ed.inKanban {
+					ed.kanbanView = NewKanbanView(ed.chat.Kanban(), ed.buffer.width)
+				}
+			}
+		case "refine":
+			if ed.chat != nil && ed.chat.Mode() == "IMPLEMENT" {
+				ed.chat.RefineKanban()
+				if ed.inKanban {
+					ed.kanbanView = NewKanbanView(ed.chat.Kanban(), ed.buffer.width)
+				}
 			}
 		case "chat":
 			ed.openChat("CHAT")
@@ -854,6 +890,16 @@ func (ed *Editor) executePaletteSelection() {
 			}
 		}
 	}
+}
+
+/*
+openWorkflowPrompt opens IMPLEMENT mode and switches to insert so the user can immediately type an instruction.
+Tab triggers this; the instruction then drives the PM → Architect → Developers → QA workflow.
+*/
+func (ed *Editor) openWorkflowPrompt() {
+	ed.openChat("IMPLEMENT")
+	ed.mode = modeInsert
+	ed.commandLine = ed.commandLine[:0]
 }
 
 func (ed *Editor) openChat(mode string) {

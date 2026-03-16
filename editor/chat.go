@@ -267,6 +267,85 @@ func (chat *Chat) Reject() {
 }
 
 /*
+RefineKanban sends the current board to the Project Manager to rewrite or expand.
+Epics may get more stories; stories may get more tasks. Output format: ## Epic: Title, ### Story: Title, #### Task: Title.
+*/
+func (chat *Chat) RefineKanban() {
+	if chat.workflow == nil {
+		chat.workflow = NewWorkflow(chat.root)
+	}
+
+	kanban := chat.workflow.Kanban()
+	current := ""
+	if kanban != nil {
+		current = kanban.FormatForPM()
+	}
+
+	if current == "" {
+		chat.appendHistory("System: No board to refine. Add epics with :epic Title first.")
+		return
+	}
+
+	order := chat.randomizedModels()
+	if len(order) == 0 {
+		return
+	}
+
+	projectManager := order[projectManagerProviderOffset]
+	refinePrompt := "Refine this kanban. Rewrite titles for clarity, expand epics with more stories if needed, expand stories with tasks if needed. Preserve structure. Output only the refined kanban in this format:\n  ## Epic: Title\n  ### Story: Title\n  #### Task: Title\n\nCurrent kanban:\n" + current
+
+	transcript := chat.snapshot()
+	responses := []string{}
+	projectRequest := chat.implementationRequest("Project Manager", "Refine the board.", "", refinePrompt, transcript, responses)
+	line, response := chat.runStage("PM Refine ["+projectManager.Name()+"]", projectManager, projectRequest)
+	chat.appendHistory(line)
+	chat.memory.RememberAgent("Project Manager", response)
+
+	parser := team.NewKanbanParser()
+	refined := parser.Parse(response)
+	if refined != nil && len(refined.Epics) > 0 {
+		chat.workflow.SetKanban(refined)
+		chat.appendHistory(chat.workflow.BoardLines()...)
+	}
+}
+
+/*
+AddEpic appends an epic to the board. Creates board if empty.
+*/
+func (chat *Chat) AddEpic(title string) {
+	if chat.workflow == nil {
+		chat.workflow = NewWorkflow(chat.root)
+	}
+	chat.workflow.AddEpic(title)
+	chat.appendHistory("Project board: added epic " + title)
+	chat.appendHistory(chat.workflow.BoardLines()...)
+}
+
+/*
+AddStory appends a story to the last epic.
+*/
+func (chat *Chat) AddStory(title string) {
+	if chat.workflow == nil {
+		chat.workflow = NewWorkflow(chat.root)
+	}
+	chat.workflow.AddStory(title)
+	chat.appendHistory("Project board: added story " + title)
+	chat.appendHistory(chat.workflow.BoardLines()...)
+}
+
+/*
+AddTask appends a task to the last story.
+*/
+func (chat *Chat) AddTask(title string) {
+	if chat.workflow == nil {
+		chat.workflow = NewWorkflow(chat.root)
+	}
+	chat.workflow.AddTask(title)
+	chat.appendHistory("Project board: added task " + title)
+	chat.appendHistory(chat.workflow.BoardLines()...)
+}
+
+/*
 Lines returns the transcript for rendering.
 */
 func (chat *Chat) Lines() []string {
@@ -280,8 +359,8 @@ func (chat *Chat) Lines() []string {
 	if chat.mode == "IMPLEMENT" {
 		return []string{
 			"Implementation window ready.",
-			"Press i to send an implementation prompt.",
-			"Use :accept or :reject after reviewing the proposal.",
+			"Tab or i: prompt  →  PM → Architect → Devs → QA",
+			":accept or :reject after reviewing the proposal.",
 		}
 	}
 
@@ -448,7 +527,19 @@ func (chat *Chat) submitImplementation(message string) {
 	}
 
 	projectManager := order[projectManagerProviderOffset]
-	pmPrompt := "Scan the recent conversation. Extract epics and stories. Output a structured kanban using ## Epic: Title for each epic and ### Story: Title for each story. Capture risks and preserve context."
+	kanban := chat.workflow.Kanban()
+	existingBoard := ""
+	if kanban != nil {
+		existingBoard = kanban.FormatForPM()
+	}
+
+	var pmPrompt string
+	if existingBoard != "" {
+		pmPrompt = "Refine this kanban given the user's request. Rewrite titles for clarity, expand epics with more stories if needed, expand stories with tasks if needed. Preserve what is already good. Output only the refined kanban:\n  ## Epic: Title\n  ### Story: Title\n  #### Task: Title\n\nUser request: " + message + "\n\nCurrent kanban:\n" + existingBoard
+	} else {
+		pmPrompt = "Scan the recent conversation. Extract epics, stories, and tasks. Output a structured kanban:\n  ## Epic: Title\n  ### Story: Title\n  #### Task: Title (for concrete sub-items)\nCapture risks and preserve context."
+	}
+
 	projectRequest := chat.implementationRequest("Project Manager", message, baseToolOutput, pmPrompt, transcript, responses)
 	line, response := chat.runStage("Project Manager ["+projectManager.Name()+"]", projectManager, projectRequest)
 	transcript = append(transcript, line)
@@ -457,21 +548,23 @@ func (chat *Chat) submitImplementation(message string) {
 	chat.memory.RememberShared("Project board prepared for: " + message)
 
 	parser := team.NewKanbanParser()
-	kanban := parser.Parse(response)
-	if kanban != nil && len(kanban.Epics) > 0 {
-		chat.workflow.SetKanban(kanban)
+	parsedKanban := parser.Parse(response)
+	if parsedKanban != nil && len(parsedKanban.Epics) > 0 {
+		chat.workflow.SetKanban(parsedKanban)
 	}
 	chat.appendHistory(chat.workflow.BoardLines()...)
 
 	kanbanContext := chat.formatKanbanForArchitect()
 	architect := order[architectProviderOffset]
-	architectPrompt := "Given the kanban (epics/stories), produce an implementation plan: file-level changes, dependencies, ordering, and risks. Be concise."
+	architectPrompt := "Given the kanban (epics/stories), produce an implementation plan:\n1. File-level changes, dependencies, ordering, risks.\n2. developer_count: N (1–4) based on parallelizability—how many developers can work concurrently without conflicts.\n3. Be concise."
 	architectRequest := chat.implementationRequest("Architect", message, baseToolOutput, architectPrompt+"\n\n"+kanbanContext, transcript, responses)
 	line, architectResponse := chat.runStage("Architect ["+architect.Name()+"]", architect, architectRequest)
 	transcript = append(transcript, line)
 	responses = append(responses, line)
 	chat.memory.RememberAgent("Architect", architectResponse)
-	chat.workflow.SetImplementationPlan(&team.ImplementationPlan{Raw: architectResponse})
+	plan := &team.ImplementationPlan{Raw: architectResponse}
+	plan.DeveloperCount = chat.parseDeveloperCount(architectResponse)
+	chat.workflow.SetImplementationPlan(plan)
 	chat.appendHistory(chat.workflow.ReportProgress("Architect", "produced implementation plan"))
 
 	roles := []string{"Project Manager", "Architect", "Team Lead"}
@@ -547,7 +640,7 @@ func (chat *Chat) submitImplementation(message string) {
 	responses = append(responses, devResponses...)
 
 	qaProvider := order[providerIndex(developerCount, qaProviderOffset, len(order))]
-	qaRequest := chat.implementationRequest("QA", message, baseToolOutput, "Write the unit and integration test strategy, review the implementation quality, and start with `Decision: PASS` or `Decision: REWORK`.", transcript, responses)
+	qaRequest := chat.implementationQARequest(message, baseToolOutput, "Use run_tests to execute the test suite. Write the unit and integration test strategy, review implementation quality and test results, then start with `Decision: PASS` or `Decision: REWORK`. REWORK if tests fail or quality is poor.", transcript, responses)
 	line, response = chat.runStage("QA ["+qaProvider.Name()+"]", qaProvider, qaRequest)
 	transcript = append(transcript, line)
 	responses = append(responses, line)
@@ -588,7 +681,7 @@ func (chat *Chat) submitImplementation(message string) {
 		transcript = append(transcript, qaDevLines...)
 		responses = append(responses, qaDevResponses...)
 
-		line, response = chat.runStage("QA ["+qaProvider.Name()+"]", qaProvider, chat.implementationRequest("QA", message, baseToolOutput, "Review the updated implementation and start with `Decision: PASS` or `Decision: REWORK`.", transcript, responses))
+		line, response = chat.runStage("QA ["+qaProvider.Name()+"]", qaProvider, chat.implementationQARequest(message, baseToolOutput, "Use run_tests again if needed. Review the updated implementation and start with `Decision: PASS` or `Decision: REWORK`.", transcript, responses))
 		transcript = append(transcript, line)
 		responses = append(responses, line)
 		decision = chat.qaDecision(response)
@@ -598,6 +691,18 @@ func (chat *Chat) submitImplementation(message string) {
 	chat.workflow.SetQAReport(response)
 
 	chat.appendHistory(chat.workflow.SetReview(decision))
+
+	if decision == "PASS" {
+		pmGoal := order[projectManagerProviderOffset]
+		goalPrompt := "Review the board, QA report, and developer outputs. Decide: are all epics, stories, and tasks complete and ready for user review? Reply with exactly `GOAL_ACHIEVED` if yes, otherwise `REMAINING: <brief list of what is left>`."
+		goalRequest := chat.implementationRequest("Project Manager", message, baseToolOutput, goalPrompt, transcript, responses)
+		_, goalResponse := chat.runStage("PM Goal Check ["+pmGoal.Name()+"]", pmGoal, goalRequest)
+		if strings.Contains(strings.ToUpper(goalResponse), "GOAL_ACHIEVED") {
+			chat.appendHistory(chat.workflow.ReportProgress("Project Manager", "goal achieved—all items in review"))
+		} else {
+			chat.appendHistory(chat.workflow.ReportProgress("Project Manager", "assessing remaining work"))
+		}
+	}
 
 	reviewProvider := order[providerIndex(developerCount, reviewProviderOffset, len(order))]
 	reviewRequest := chat.implementationRequest("Review", message, baseToolOutput, "Summarize the project board, communication channel status, memory, and review outcome. End with `Accept with :accept or :reject.`", transcript, responses)
@@ -630,6 +735,25 @@ func (chat *Chat) submitImplementation(message string) {
 	chat.submitDiscussion("Review the implementation summary above. Share your assessment.")
 }
 
+func (chat *Chat) parseDeveloperCount(architectResponse string) int {
+	for _, line := range strings.Split(architectResponse, "\n") {
+		line = strings.TrimSpace(strings.ToLower(line))
+		if strings.HasPrefix(line, "developer_count:") {
+			n := 0
+			for _, r := range strings.TrimPrefix(line, "developer_count:") {
+				if r >= '0' && r <= '9' {
+					n = n*10 + int(r-'0')
+				}
+			}
+			if n >= 1 && n <= 8 {
+				return n
+			}
+		}
+	}
+
+	return 0
+}
+
 func (chat *Chat) formatKanbanForArchitect() string {
 	kanban := chat.workflow.Kanban()
 	if kanban == nil || len(kanban.Epics) == 0 {
@@ -656,6 +780,43 @@ func (chat *Chat) implementationRequest(role string, message string, baseToolOut
 		PriorResponse: responses,
 		SystemPrompt:  chat.implementationPrompt(role, instructions),
 	}
+}
+
+/*
+implementationQARequest adds run_tests so QA can execute tests before PASS/REWORK.
+*/
+func (chat *Chat) implementationQARequest(message string, baseToolOutput string, instructions string, transcript []string, responses []string) *provider.Request {
+	req := chat.implementationRequest("QA", message, baseToolOutput, instructions, transcript, responses)
+
+	req.Tools = append(provider.DiscussionTools(), provider.ToolDefinition{
+		Name:        "run_tests",
+		Description: "Run the project test suite (e.g. go test ./...). Use before deciding PASS or REWORK. Report failures.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path": map[string]any{
+					"type":        "string",
+					"description": "Directory to run tests in, defaults to workspace root",
+				},
+			},
+		},
+	})
+
+	toolBackend := &chatToolBackend{chat: chat}
+	baseExecutor := provider.NewDiscussionToolExecutor(toolBackend)
+	req.ToolExecutor = func(name string, args map[string]any) (string, error) {
+		if name == "run_tests" {
+			path, _ := args["path"].(string)
+			if path == "" {
+				path = "."
+			}
+			return chat.runTests(path), nil
+		}
+
+		return baseExecutor(name, args)
+	}
+
+	return req
 }
 
 func (chat *Chat) implementationDeveloperRequest(role string, message string, baseToolOutput string, instructions string, transcript []string, responses []string, devProvider provider.Provider) *provider.Request {
@@ -1066,6 +1227,34 @@ func (chat *Chat) read(target string, start, end int) string {
 	}
 
 	return strings.Join(result, "\n")
+}
+
+/*
+runTests executes the test suite in the workspace and returns output.
+QA uses this to validate implementation quality; pass/fail drives REWORK or Review.
+*/
+func (chat *Chat) runTests(path string) string {
+	resolved, allowed := chat.resolve(path)
+	if !allowed {
+		return "Tool run_tests blocked: path escapes the workspace."
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "go", "test", "./...")
+	cmd.Dir = resolved
+	out, err := cmd.CombinedOutput()
+	res := string(out)
+	if err != nil {
+		return fmt.Sprintf("Tests failed (exit %v):\n%s", err, res)
+	}
+
+	if len(res) > 6000 {
+		res = res[:6000] + "\n... (truncated)"
+	}
+
+	return "Tests passed:\n" + res
 }
 
 func (chat *Chat) resolve(target string) (string, bool) {

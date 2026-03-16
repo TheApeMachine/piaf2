@@ -1,0 +1,66 @@
+{
+  "Epics": [
+    {
+      "ID": "epic-1",
+      "Title": "Configurable Keyboard Commands",
+      "Stories": [
+        {
+          "ID": "story-1-1",
+          "Title": "Keyboard mappings loadable from config file",
+          "Status": "Todo",
+          "EpicID": "epic-1",
+          "Tasks": [
+            {
+              "ID": "task-1-1-1",
+              "Title": "Discover current keyboard handling implementation",
+              "Status": "Todo",
+              "StoryID": "story-1-1"
+            },
+            {
+              "ID": "task-1-1-2",
+              "Title": "Define config schema for keyboard commands",
+              "Status": "Todo",
+              "StoryID": "story-1-1"
+            },
+            {
+              "ID": "task-1-1-3",
+              "Title": "Implement config parsing and validation for key bindings",
+              "Status": "Todo",
+              "StoryID": "story-1-1"
+            },
+            {
+              "ID": "task-1-1-4",
+              "Title": "Map config-defined keys to internal command actions",
+              "Status": "Todo",
+              "StoryID": "story-1-1"
+            },
+            {
+              "ID": "task-1-1-5",
+              "Title": "Provide defaults and fallback behavior",
+              "Status": "Todo",
+              "StoryID": "story-1-1"
+            },
+            {
+              "ID": "task-1-1-6",
+              "Title": "Add configuration examples and minimal documentation",
+              "Status": "Todo",
+              "StoryID": "story-1-1"
+            },
+            {
+              "ID": "task-1-1-7",
+              "Title": "Testing and QA",
+              "Status": "Todo",
+              "StoryID": "story-1-1"
+            },
+            {
+              "ID": "task-1-1-8",
+              "Title": "Risk assessment and mitigation",
+              "Status": "Todo",
+              "StoryID": "story-1-1"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
