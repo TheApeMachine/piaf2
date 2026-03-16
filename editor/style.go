@@ -133,11 +133,13 @@ func styleCodeLine(line string, spec *syntaxSpec) string {
 		}
 
 		if hasRunesPrefix(runes[index:], "/*") {
+			end := consumeBlockCommentRunes(runes, index)
 			out.WriteString(styleDim)
 			out.WriteString(styleFgGray)
-			out.WriteString(string(runes[index:]))
+			out.WriteString(string(runes[index:end]))
 			out.WriteString(styleReset)
-			break
+			index = end
+			continue
 		}
 
 		if isQuoteRune(runes[index]) {
@@ -399,6 +401,16 @@ func consumeQuotedRunes(runes []rune, start int) int {
 
 		if runes[index] == quote {
 			return index + 1
+		}
+	}
+
+	return len(runes)
+}
+
+func consumeBlockCommentRunes(runes []rune, start int) int {
+	for index := start + 2; index < len(runes)-1; index++ {
+		if runes[index] == '*' && runes[index+1] == '/' {
+			return index + 2
 		}
 	}
 

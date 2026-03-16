@@ -155,6 +155,7 @@ func TestStyleCodeLines(t *testing.T) {
 				"func main() {",
 				"\tmessage := \"hello\"",
 				"\treturn 42 // answer",
+				"\tvalue := /* inline */ 7",
 				"}",
 			}, "main.go")
 
@@ -164,6 +165,8 @@ func TestStyleCodeLines(t *testing.T) {
 				convey.So(lines[2], convey.ShouldContainSubstring, styleBold+styleFgMagenta+"return"+styleReset)
 				convey.So(lines[2], convey.ShouldContainSubstring, styleFgYellow+"42"+styleReset)
 				convey.So(lines[2], convey.ShouldContainSubstring, styleDim+styleFgGray+"// answer"+styleReset)
+				convey.So(lines[3], convey.ShouldContainSubstring, styleDim+styleFgGray+"/* inline */"+styleReset)
+				convey.So(lines[3], convey.ShouldContainSubstring, styleFgYellow+"7"+styleReset)
 			})
 		})
 
