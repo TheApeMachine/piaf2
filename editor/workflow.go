@@ -58,7 +58,7 @@ func (workflow *Workflow) Begin(history []string) {
 	workflow.review = ""
 
 	message := lastUserMessage(history)
-	
+
 	if workflow.kanban == nil {
 		workflow.board = workflowBoard(message)
 		workflow.developerTasks = workflowDeveloperTasks(workflow.board)
@@ -69,10 +69,10 @@ func (workflow *Workflow) SaveKanban() {
 	if workflow.kanban == nil || workflow.root == "" {
 		return
 	}
-	
+
 	path := filepath.Join(workflow.root, ".piaf", "kanban.json")
 	_ = os.MkdirAll(filepath.Dir(path), 0755)
-	
+
 	b, err := json.MarshalIndent(workflow.kanban, "", "  ")
 	if err == nil {
 		_ = os.WriteFile(path, b, 0644)
@@ -83,13 +83,13 @@ func (workflow *Workflow) LoadKanban() {
 	if workflow.root == "" {
 		return
 	}
-	
+
 	path := filepath.Join(workflow.root, ".piaf", "kanban.json")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return
 	}
-	
+
 	var kanban team.Kanban
 	if err := json.Unmarshal(b, &kanban); err == nil {
 		workflow.kanban = &kanban
@@ -106,6 +106,20 @@ func (workflow *Workflow) BoardLines() []string {
 	defer workflow.mu.Unlock()
 
 	lines := []string{"Project board:"}
+	if workflow.kanban != nil && len(workflow.kanban.Epics) > 0 {
+		lines = append(lines, "Roadmap:")
+		lines = append(lines, workflow.kanban.RoadmapLines()...)
+		lines = append(lines, "", "Workflow:")
+		lines = append(lines,
+			"- Project Manager prepares the roadmap and review gate",
+			"- Architect plans the work and parallel developer lanes",
+			fmt.Sprintf("- Developers active: %d", len(workflow.developerTasks)),
+			"- QA gate: "+workflow.qaStatusLabel(),
+			"- User performs the final review with :accept or :reject",
+		)
+		return lines
+	}
+
 	for _, item := range workflow.board {
 		lines = append(lines, "- [ ] "+item)
 	}
@@ -229,7 +243,7 @@ func (workflow *Workflow) DeveloperCount() int {
 AssignDeveloper records a team lead assignment line.
 */
 func (workflow *Workflow) AssignDeveloper(index int, task string) string {
-	return fmt.Sprintf("Assignment: Developer %d owns %s.", index, task)
+	return fmt.Sprintf("Architect assignment: Developer %d owns %s.", index, task)
 }
 
 /*
@@ -261,6 +275,22 @@ func (workflow *Workflow) ReportProgress(agent string, status string) string {
 }
 
 /*
+MarkDeveloperTaskInProgress updates the kanban as work begins.
+*/
+func (workflow *Workflow) MarkDeveloperTaskInProgress(task string) {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	if workflow.kanban == nil {
+		return
+	}
+
+	if workflow.kanban.MarkTaskInProgress(task) {
+		workflow.SaveKanban()
+	}
+}
+
+/*
 RequestRework records that QA requested another implementation pass.
 */
 func (workflow *Workflow) RequestRework(summary string) string {
@@ -285,6 +315,25 @@ func (workflow *Workflow) SetReview(decision string) string {
 	}
 
 	return "Review: QA final decision " + workflow.review + "."
+}
+
+/*
+GoalAchieved records that PM moved the roadmap into review after QA passed.
+*/
+func (workflow *Workflow) GoalAchieved() string {
+	workflow.mu.Lock()
+	defer workflow.mu.Unlock()
+
+	if workflow.review != "PASS" {
+		return "Project Manager: roadmap remains in progress until QA passes."
+	}
+
+	if workflow.kanban != nil {
+		workflow.kanban.MoveAllToReview()
+		workflow.SaveKanban()
+	}
+
+	return "Project Manager: goal achieved. All epics, stories, and tasks moved to Review."
 }
 
 func workflowBoard(message string) []string {
@@ -357,6 +406,20 @@ func splitWorkflowMessage(message string) []string {
 	return tasks
 }
 
+func (workflow *Workflow) qaStatusLabel() string {
+	switch workflow.review {
+	case "PASS":
+		return "PASS, moved to Review"
+	case "REWORK":
+		return "REWORK requested"
+	default:
+		if workflow.qaReport != "" {
+			return "reviewed"
+		}
+		return "pending"
+	}
+}
+
 /*
 AgentMemory stores shared and per-agent memory entries.
 */
@@ -388,15 +451,15 @@ func (memory *AgentMemory) Save() {
 	if memory.root == "" {
 		return
 	}
-	
+
 	path := filepath.Join(memory.root, ".piaf", "memory.json")
 	_ = os.MkdirAll(filepath.Dir(path), 0755)
-	
+
 	state := memoryState{
 		Shared: memory.shared,
 		Agents: memory.agents,
 	}
-	
+
 	b, err := json.MarshalIndent(state, "", "  ")
 	if err == nil {
 		_ = os.WriteFile(path, b, 0644)
@@ -407,13 +470,13 @@ func (memory *AgentMemory) Load() {
 	if memory.root == "" {
 		return
 	}
-	
+
 	path := filepath.Join(memory.root, ".piaf", "memory.json")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return
 	}
-	
+
 	var state memoryState
 	if err := json.Unmarshal(b, &state); err == nil {
 		memory.shared = state.Shared

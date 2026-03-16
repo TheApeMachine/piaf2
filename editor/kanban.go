@@ -1,12 +1,14 @@
 package editor
 
 import (
+	"strings"
+
 	"github.com/theapemachine/piaf/team"
 )
 
 /*
 KanbanView renders a Kanban into display lines for a TUI.
-Shows columns: Backlog, Todo, InProgress, Done.
+Shows the roadmap plus split kanban columns for parallel tracking.
 */
 type KanbanView struct {
 	kanban *team.Kanban
@@ -41,33 +43,19 @@ func (view *KanbanView) Lines() []string {
 		}
 	}
 
-	lines := []string{"Kanban", "------", ""}
-
-	colWidth := view.width/4 - 2
-	if colWidth < 8 {
-		colWidth = 8
+	lines := []string{
+		"Roadmap",
+		"-------",
 	}
-
-	for _, epic := range view.kanban.Epics {
-		lines = append(lines, "## "+epic.Title)
-		lines = append(lines, "")
-
-		for _, story := range epic.Stories {
-			title := story.Title
-			if len(title) > colWidth*2 {
-				title = title[:colWidth*2-3] + "..."
-			}
-			lines = append(lines, "  ["+string(story.Status)+"] "+title)
-		}
-
-		if len(epic.Stories) == 0 {
-			lines = append(lines, "  (no stories)")
-		}
-
-		lines = append(lines, "")
-	}
-
-	lines = append(lines, "---", ":board to toggle | Escape to return to chat")
+	lines = append(lines, view.kanban.RoadmapLines()...)
+	lines = append(lines,
+		"",
+		"Kanban",
+		"------",
+		"Split view follows multiple active developer lanes at once.",
+	)
+	lines = append(lines, view.splitColumns()...)
+	lines = append(lines, "", "---", ":board to toggle | Escape to return to chat")
 
 	return lines
 }
@@ -77,4 +65,93 @@ SetKanban updates the kanban source.
 */
 func (view *KanbanView) SetKanban(kanban *team.Kanban) {
 	view.kanban = kanban
+}
+
+func (view *KanbanView) splitColumns() []string {
+	statuses := []team.StoryStatus{
+		team.StatusBacklog,
+		team.StatusTodo,
+		team.StatusInProgress,
+		team.StatusReview,
+		team.StatusDone,
+	}
+	columns := make([][]string, len(statuses))
+
+	for _, epic := range view.kanban.Epics {
+		for _, story := range epic.Stories {
+			if len(story.Tasks) == 0 {
+				index := statusColumnIndex(story.Status)
+				columns[index] = append(columns[index], story.Title)
+				continue
+			}
+
+			for _, task := range story.Tasks {
+				index := statusColumnIndex(task.Status)
+				columns[index] = append(columns[index], story.Title+": "+task.Title)
+			}
+		}
+	}
+
+	colWidth := view.width/len(statuses) - 1
+	if colWidth < 14 {
+		colWidth = 14
+	}
+
+	headers := make([]string, 0, len(statuses))
+	separator := make([]string, 0, len(statuses))
+	maxRows := 0
+	for index, status := range statuses {
+		headers = append(headers, padKanbanCell(string(status), colWidth))
+		separator = append(separator, strings.Repeat("─", colWidth))
+		if len(columns[index]) > maxRows {
+			maxRows = len(columns[index])
+		}
+	}
+
+	lines := []string{
+		strings.Join(headers, " "),
+		strings.Join(separator, " "),
+	}
+
+	for row := 0; row < maxRows; row++ {
+		cells := make([]string, 0, len(columns))
+		for _, column := range columns {
+			cell := ""
+			if row < len(column) {
+				cell = column[row]
+			}
+			cells = append(cells, padKanbanCell(cell, colWidth))
+		}
+		lines = append(lines, strings.Join(cells, " "))
+	}
+
+	return lines
+}
+
+func statusColumnIndex(status team.StoryStatus) int {
+	switch status {
+	case team.StatusBacklog:
+		return 0
+	case team.StatusInProgress:
+		return 2
+	case team.StatusReview:
+		return 3
+	case team.StatusDone:
+		return 4
+	default:
+		return 1
+	}
+}
+
+func padKanbanCell(value string, width int) string {
+	runes := []rune(value)
+	if len(runes) > width {
+		runes = append(runes[:width-1], '…')
+	}
+
+	if len(runes) < width {
+		runes = append(runes, []rune(strings.Repeat(" ", width-len(runes)))...)
+	}
+
+	return string(runes)
 }

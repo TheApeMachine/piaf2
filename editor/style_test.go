@@ -68,6 +68,15 @@ func TestStyleChatLines(t *testing.T) {
 			})
 		})
 
+		convey.Convey("When styling roadmap and workflow headers", func() {
+			lines := styleChatLines([]string{"Roadmap:", "Workflow:"}, 80)
+
+			convey.Convey("It should emphasize both sections", func() {
+				convey.So(lines[0], convey.ShouldStartWith, styleBold+styleFgHighlight())
+				convey.So(lines[1], convey.ShouldStartWith, styleDim+styleFgHighlight())
+			})
+		})
+
 		convey.Convey("When styling plain content", func() {
 			lines := styleChatLines([]string{"just regular text"}, 80)
 

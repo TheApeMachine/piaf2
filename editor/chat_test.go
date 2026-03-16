@@ -189,9 +189,15 @@ func TestChatImplementWorkflow(t *testing.T) {
 			case strings.Contains(request.SystemPrompt, "Summarize the completed work"):
 				return "Summary: Epics completed. Key changes applied. Tests added. Accept with :accept or :reject."
 			case strings.Contains(request.SystemPrompt, "Project Manager"):
-				return "Project board captured with scope and risks."
+				return `## Epic: Prompt workflow
+### Story: Plan the roadmap
+#### Task: Turn the request into epics
+#### Task: Turn the request into stories
+### Story: Coordinate implementation
+#### Task: Assign developer lanes
+#### Task: Track QA and review`
 			case strings.Contains(request.SystemPrompt, "Architect"):
-				return "Implementation plan: editor/editor.go, editor/chat.go; order: editor first; risks: minimal."
+				return "Implementation plan: editor/editor.go, editor/chat.go, editor/kanban.go; order: workflow first; risks: minimal; developer lanes: 2."
 			case strings.Contains(request.SystemPrompt, "Team Lead"):
 				return "Team staffed and assignments published."
 			case strings.Contains(request.SystemPrompt, "Developer"):
@@ -231,17 +237,22 @@ func TestChatImplementWorkflow(t *testing.T) {
 				}
 
 				convey.So(transcript, convey.ShouldContainSubstring, "Project board:")
-				convey.So(transcript, convey.ShouldContainSubstring, "Team: Project Manager -> Architect -> Team Lead -> Developer 1 -> Developer 2 -> QA -> Review")
-				convey.So(transcript, convey.ShouldContainSubstring, "Assignment: Developer 1 owns")
-				convey.So(transcript, convey.ShouldContainSubstring, "Assignment: Developer 2 owns")
+				convey.So(transcript, convey.ShouldContainSubstring, "Roadmap:")
+				convey.So(transcript, convey.ShouldContainSubstring, "Task [Todo]: Turn the request into epics")
+				convey.So(transcript, convey.ShouldContainSubstring, "Team: Project Manager -> Architect -> Team Lead -> Developer 1 -> Developer 2 -> QA -> Review -> User Review")
+				convey.So(transcript, convey.ShouldContainSubstring, "Architect staffing: Deploy 2 developer(s) based on parallelizable tasks.")
+				convey.So(transcript, convey.ShouldContainSubstring, "Architect assignment: Developer 1 owns")
+				convey.So(transcript, convey.ShouldContainSubstring, "Architect assignment: Developer 2 owns")
 				convey.So(transcript, convey.ShouldContainSubstring, "Channel coordination: Developer 1 intends to change")
 				convey.So(transcript, convey.ShouldContainSubstring, "Channel coordination: Team Lead confirms Developer 1 is clear to proceed")
 				convey.So(transcript, convey.ShouldContainSubstring, "Progress: Architect produced implementation plan.")
+				convey.So(transcript, convey.ShouldContainSubstring, "Progress: Architect recommended 2 parallel developer lane(s).")
 				convey.So(transcript, convey.ShouldContainSubstring, "Progress: Team Lead assigned 2 developer(s) and published the current plan.")
 				convey.So(transcript, convey.ShouldContainSubstring, "Progress: Developer 1 reported implementation progress to the chat.")
 				convey.So(transcript, convey.ShouldContainSubstring, "Progress: QA reviewed the implementation and test plan.")
 				convey.So(transcript, convey.ShouldContainSubstring, "Review: QA requested improvements.")
 				convey.So(transcript, convey.ShouldContainSubstring, "Review: QA final decision PASS.")
+				convey.So(transcript, convey.ShouldContainSubstring, "Project Manager: goal achieved. All epics, stories, and tasks moved to Review.")
 				convey.So(transcript, convey.ShouldContainSubstring, "Accept with :accept or :reject.")
 				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Project Manager")
 				convey.So(strings.Join(systemPrompts, "\n"), convey.ShouldContainSubstring, "You are the Architect")

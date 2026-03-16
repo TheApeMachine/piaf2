@@ -234,6 +234,10 @@ func styleChatLine(line string, width int) string {
 			return styleDim + line + styleReset
 		}
 
+		if strings.HasPrefix(trimmed, "Coordination:") {
+			return styleBold + styleFgHighlight() + line + styleReset
+		}
+
 	case 'D':
 		if strings.HasPrefix(trimmed, "Discussion window") {
 			return styleDim + line + styleReset
@@ -283,6 +287,10 @@ func styleChatLine(line string, width int) string {
 		}
 
 	case 'R':
+		if strings.HasPrefix(trimmed, "Roadmap:") {
+			return styleBold + styleFgHighlight() + line + styleReset
+		}
+
 		if strings.HasPrefix(trimmed, "Review:") {
 			return styleBold + styleFgHighlight() + line + styleReset
 		}
@@ -308,6 +316,11 @@ func styleChatLine(line string, width int) string {
 	case 'U':
 		if strings.HasPrefix(trimmed, "Use prompts") || strings.HasPrefix(trimmed, "Use :accept") {
 			return styleDim + line + styleReset
+		}
+
+	case 'W':
+		if strings.HasPrefix(trimmed, "Workflow:") {
+			return styleDim + styleFgHighlight() + line + styleReset
 		}
 
 	case 'Y':
