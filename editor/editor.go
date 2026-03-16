@@ -191,11 +191,13 @@ func (ed *Editor) Write(p []byte) (n int, err error) {
 				ed.swallowSpace = false
 			} else {
 				ed.swallowSpace = false
+
 				if ed.pendingSpace {
 					ed.handleRune(' ')
 					ed.pendingSpace = false
 				}
-				if runeVal == ' ' {
+
+				if runeVal == ' ' && ed.mode == modeInsert {
 					ed.pendingSpace = true
 				} else {
 					ed.handleRune(runeVal)
@@ -471,6 +473,8 @@ func (ed *Editor) applyNormalCommand(r rune) {
 		ed.buffer.MoveLineEnd()
 	case 'f':
 		ed.startJump()
+	case ' ':
+		ed.buffer.MoveRight()
 	}
 }
 
