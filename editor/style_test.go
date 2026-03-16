@@ -228,7 +228,7 @@ func BenchmarkStyleChatLines(b *testing.B) {
 		"just some regular text continuation",
 	}
 
-	for b.Loop() {
+	for index := 0; index < b.N; index++ {
 		styleChatLines(lines, 80)
 	}
 }
@@ -236,7 +236,7 @@ func BenchmarkStyleChatLines(b *testing.B) {
 func BenchmarkStyleExplorerLines(b *testing.B) {
 	lines := []string{"..", "cmd/", "editor/", "tui/", "main.go", "go.mod", "README.md"}
 
-	for b.Loop() {
+	for index := 0; index < b.N; index++ {
 		styleExplorerLines(lines)
 	}
 }
@@ -253,7 +253,7 @@ func BenchmarkStyleCodeLines(b *testing.B) {
 		"}",
 	}
 
-	for b.Loop() {
+	for index := 0; index < b.N; index++ {
 		styleCodeLines(lines, "main.go")
 	}
 }

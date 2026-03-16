@@ -36,6 +36,8 @@ type syntaxSpec struct {
 }
 
 var (
+	blockCommentPrefix = []rune("/*")
+
 	goSyntaxSpec = syntaxSpec{
 		lineComment: "//",
 		keywords: keywordSet(
@@ -120,11 +122,12 @@ func styleCodeLine(line string, spec *syntaxSpec) string {
 	}
 
 	runes := []rune(line)
+	lineCommentPrefix := []rune(spec.lineComment)
 	var out strings.Builder
 	out.Grow(len(line) + 32)
 
 	for index := 0; index < len(runes); {
-		if spec.lineComment != "" && hasRunesPrefix(runes[index:], spec.lineComment) {
+		if len(lineCommentPrefix) > 0 && hasRunesPrefix(runes[index:], lineCommentPrefix) {
 			out.WriteString(styleDim)
 			out.WriteString(styleFgGray)
 			out.WriteString(string(runes[index:]))
@@ -132,7 +135,7 @@ func styleCodeLine(line string, spec *syntaxSpec) string {
 			break
 		}
 
-		if hasRunesPrefix(runes[index:], "/*") {
+		if hasRunesPrefix(runes[index:], blockCommentPrefix) {
 			end := consumeBlockCommentRunes(runes, index)
 			out.WriteString(styleDim)
 			out.WriteString(styleFgGray)
@@ -363,22 +366,18 @@ func syntaxSpecForPath(path string) *syntaxSpec {
 }
 
 func syntaxContains(set map[string]struct{}, word string) bool {
-	if len(set) == 0 {
-		return false
-	}
-
 	_, ok := set[word]
 
 	return ok
 }
 
-func hasRunesPrefix(runes []rune, prefix string) bool {
+func hasRunesPrefix(runes []rune, prefix []rune) bool {
 	if len(runes) < len(prefix) {
 		return false
 	}
 
-	for index, expected := range prefix {
-		if runes[index] != expected {
+	for index := range prefix {
+		if runes[index] != prefix[index] {
 			return false
 		}
 	}
