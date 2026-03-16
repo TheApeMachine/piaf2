@@ -184,70 +184,75 @@ func TestEditorJumpMode(t *testing.T) {
 			ed.Write(encodeRune('f'))
 			frame := decodeFrame(ed)
 
-			convey.Convey("It should overlay jump hints without replacing original text", func() {
+			convey.Convey("It should prompt for a target character before showing labels", func() {
 				convey.So(frame, convey.ShouldNotBeNil)
-				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "f ")
-				stripAnsi := func(s string) string {
-					var out []byte
-					for index := 0; index < len(s); index++ {
-						if s[index] == '\033' && index+1 < len(s) && s[index+1] == '[' {
-							for index++; index < len(s) && s[index] != 'm'; index++ {
-							}
-							continue
-						}
-						out = append(out, s[index])
-					}
-					return string(out)
-				}
-				stripped0 := stripAnsi(frame.Lines[0])
-				stripped1 := stripAnsi(frame.Lines[1])
-				convey.So(stripped0, convey.ShouldContainSubstring, " b")
-				convey.So(stripped1, convey.ShouldContainSubstring, " d")
+				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "target")
+				convey.So(frame.Lines[0], convey.ShouldNotContainSubstring, ansiInverse)
+				convey.So(frame.Lines[1], convey.ShouldNotContainSubstring, ansiInverse)
 			})
 		})
 
-		convey.Convey("When 'f' then a jump label are pressed", func() {
+		convey.Convey("When 'f' then a unique target character are pressed", func() {
 			ed.Write(encodeRune('f'))
-			ed.Write(encodeRune('g'))
+			ed.Write(encodeRune('b'))
 
-			convey.Convey("It should jump to the labeled position and exit jump mode", func() {
+			convey.Convey("It should jump directly and exit jump mode", func() {
 				convey.So(ed.buffer.cursorRow, convey.ShouldEqual, 0)
-				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, 4)
+				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, 6)
+				convey.So(ed.jumpNeedle, convey.ShouldEqual, rune(0))
 				convey.So(ed.jumpActive(), convey.ShouldBeFalse)
+			})
+		})
+
+		convey.Convey("When 'f' then a repeated target character are pressed", func() {
+			ed.Write(encodeRune('f'))
+			ed.Write(encodeRune('a'))
+			frame := decodeFrame(ed)
+
+			convey.Convey("It should narrow the overlay to matching locations", func() {
+				convey.So(frame, convey.ShouldNotBeNil)
+				convey.So(ed.jumpActive(), convey.ShouldBeTrue)
+				convey.So(ed.jumpNeedle, convey.ShouldEqual, 'a')
+				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "f ")
+				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "a")
+				convey.So(frame.Lines[0], convey.ShouldContainSubstring, ansiInverse)
+				convey.So(frame.Lines[1], convey.ShouldContainSubstring, ansiInverse)
 			})
 		})
 	})
 
-	convey.Convey("Given an Editor with more jump targets than the alphabet", t, func() {
+	convey.Convey("Given an Editor with more matching jump targets than the alphabet", t, func() {
 		ed := NewEditor(EditorWithSize(80, 6))
 		ed.Write(encodeRune('i'))
-		for _, r := range "abcdefghijklmnopqrstuvwxyzabcde" {
+		for _, r := range "a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a" {
 			ed.Write(encodeRune(r))
 		}
 		ed.Write(encodeSpecial(event.KeyEsc))
 
-		convey.Convey("When 'f' then the first jump prefix are pressed", func() {
+		convey.Convey("When 'f' then a repeated target and the first jump prefix are pressed", func() {
 			ed.Write(encodeRune('f'))
 			ed.Write(encodeRune('a'))
 			frame := decodeFrame(ed)
+			ed.Write(encodeRune('a'))
 
 			convey.Convey("It should stay in jump mode and refine the overlay", func() {
 				convey.So(frame, convey.ShouldNotBeNil)
 				convey.So(ed.jumpActive(), convey.ShouldBeTrue)
 				convey.So(ed.jumpCodeLen, convey.ShouldEqual, 2)
 				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "f ")
-				convey.So(frame.Lines[0], convey.ShouldContainSubstring, "abcde")
+				convey.So(frame.Lines[0], convey.ShouldContainSubstring, ansiInverse)
 			})
 		})
 
-		convey.Convey("When 'f' then a complete jump code are pressed", func() {
+		convey.Convey("When 'f' then a repeated target and a complete jump code are pressed", func() {
 			ed.Write(encodeRune('f'))
+			ed.Write(encodeRune('a'))
 			ed.Write(encodeRune('a'))
 			ed.Write(encodeRune('d'))
 
 			convey.Convey("It should jump once the code is complete", func() {
 				convey.So(ed.buffer.cursorRow, convey.ShouldEqual, 0)
-				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, 2)
+				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, 4)
 				convey.So(ed.jumpActive(), convey.ShouldBeFalse)
 			})
 		})
@@ -377,11 +382,10 @@ func TestEditorRenderSyntaxHighlighting(t *testing.T) {
 			ed.Write(encodeRune('f'))
 			frame := decodeFrame(ed)
 
-			convey.Convey("It should still overlay jump labels on the visible text", func() {
+			convey.Convey("It should keep the code readable while prompting for a target", func() {
 				convey.So(frame, convey.ShouldNotBeNil)
-				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "f ")
-				convey.So(frame.Lines[1], convey.ShouldContainSubstring, ansiInverse)
-				convey.So(frame.Lines[1], convey.ShouldContainSubstring, "func main() {")
+				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "target")
+				convey.So(frame.Lines[1], convey.ShouldContainSubstring, styleBold+styleFgMagenta+"func"+styleReset)
 			})
 		})
 	})
