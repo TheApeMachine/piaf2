@@ -8,12 +8,14 @@
     "Project board prepared for: add a command palette and integration tests",
     "Team staffed and assignments published.",
     "Developer implementation progress shared.",
-    "Project board prepared for: add tests"
+    "Project board prepared for: add tests",
+    "Implementation plan: editor/editor.go, editor/chat.go, editor/kanban.go; order: workflow first; risks: minimal; developer lanes: 2."
   ],
   "agents": {
     "Architect": [
       "prepared the diff",
-      "Implementation plan: editor/editor.go, editor/chat.go; order: editor first; risks: minimal."
+      "Implementation plan: editor/editor.go, editor/chat.go; order: editor first; risks: minimal.",
+      "Implementation plan: editor/editor.go, editor/chat.go, editor/kanban.go; order: workflow first; risks: minimal; developer lanes: 2."
     ],
     "Developer 1": [
       "Gemini Pro 3.1 response 2",
@@ -46,7 +48,8 @@
     ],
     "Project Manager": [
       "final implementation summary",
-      "Project board captured with scope and risks."
+      "Project board captured with scope and risks.",
+      "## Epic: Prompt workflow\n### Story: Plan the roadmap\n#### Task: Turn the request into epics\n#### Task: Turn the request into stories\n### Story: Coordinate implementation\n#### Task: Assign developer lanes\n#### Task: Track QA and review"
     ],
     "QA": [
       "Gemini Pro 3.1 response 3",
@@ -59,7 +62,8 @@
     ],
     "Team Lead": [
       "scoped the request",
-      "Team staffed and assignments published."
+      "Team staffed and assignments published.",
+      "Implementation plan: editor/editor.go, editor/chat.go, editor/kanban.go; order: workflow first; risks: minimal; developer lanes: 2."
     ]
   }
 }

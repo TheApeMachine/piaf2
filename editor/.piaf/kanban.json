@@ -1,0 +1,50 @@
+{
+  "Epics": [
+    {
+      "ID": "epic-1",
+      "Title": "Prompt workflow",
+      "Stories": [
+        {
+          "ID": "story-1-1",
+          "Title": "Plan the roadmap",
+          "Status": "Todo",
+          "EpicID": "epic-1",
+          "Tasks": [
+            {
+              "ID": "task-1-1-1",
+              "Title": "Turn the request into epics",
+              "Status": "Review",
+              "StoryID": "story-1-1"
+            },
+            {
+              "ID": "task-1-1-2",
+              "Title": "Turn the request into stories",
+              "Status": "Review",
+              "StoryID": "story-1-1"
+            }
+          ]
+        },
+        {
+          "ID": "story-1-2",
+          "Title": "Coordinate implementation",
+          "Status": "Todo",
+          "EpicID": "epic-1",
+          "Tasks": [
+            {
+              "ID": "task-1-2-1",
+              "Title": "Assign developer lanes",
+              "Status": "Review",
+              "StoryID": "story-1-2"
+            },
+            {
+              "ID": "task-1-2-2",
+              "Title": "Track QA and review",
+              "Status": "Review",
+              "StoryID": "story-1-2"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
