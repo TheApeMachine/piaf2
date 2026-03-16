@@ -6,6 +6,11 @@ import (
 	"strings"
 )
 
+var (
+	kanbanEpicRe  = regexp.MustCompile(`(?m)^##\s+Epic:\s*(.+)$`)
+	kanbanStoryRe = regexp.MustCompile(`(?m)^###\s+Story:\s*(.+)$`)
+)
+
 /*
 KanbanParser extracts epics and stories from PM output.
 Expects ## Epic: Title and ### Story: Title or ### Story: Title (Status).
@@ -24,8 +29,6 @@ Parse extracts a Kanban from PM response text.
 */
 func (parser *KanbanParser) Parse(text string) *Kanban {
 	kanban := &Kanban{}
-	epicRe := regexp.MustCompile(`(?m)^##\s+Epic:\s*(.+)$`)
-	storyRe := regexp.MustCompile(`(?m)^###\s+Story:\s*(.+)$`)
 
 	lines := strings.Split(text, "\n")
 	var currentEpic *Epic
@@ -34,8 +37,8 @@ func (parser *KanbanParser) Parse(text string) *Kanban {
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if epicRe.MatchString(line) {
-			matches := epicRe.FindStringSubmatch(line)
+		if kanbanEpicRe.MatchString(line) {
+			matches := kanbanEpicRe.FindStringSubmatch(line)
 			if len(matches) >= 2 {
 				title := strings.TrimSpace(matches[1])
 				if title == "" {
@@ -56,8 +59,8 @@ func (parser *KanbanParser) Parse(text string) *Kanban {
 				currentEpic = &Epic{ID: id, Title: title}
 				kanban.Epics = append(kanban.Epics, *currentEpic)
 			}
-		} else if storyRe.MatchString(line) {
-			matches := storyRe.FindStringSubmatch(line)
+		} else if kanbanStoryRe.MatchString(line) {
+			matches := kanbanStoryRe.FindStringSubmatch(line)
 			if len(matches) >= 2 {
 				title := strings.TrimSpace(matches[1])
 				if title == "" {
