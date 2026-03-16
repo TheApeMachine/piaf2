@@ -19,6 +19,7 @@ const (
 )
 
 const jumpAlphabet = "asdfghjklqwertyuiopzxcvbnm"
+const jumpPromptTarget = "target"
 
 var jumpAlphabetLookup = newJumpAlphabetLookup()
 
@@ -645,7 +646,7 @@ func (ed *Editor) render() {
 		cmdLine = ""
 	} else if ed.jumpActive() {
 		if ed.jumpNeedle == 0 {
-			cmdLine = styleBold + styleFgHighlight + "f " + styleReset + "target"
+			cmdLine = styleBold + styleFgHighlight + "f " + styleReset + jumpPromptTarget
 		} else {
 			lines = ed.jumpLines(lines)
 			cmdLine = styleBold + styleFgHighlight + "f " + styleReset + string(ed.jumpNeedle) + ed.jumpPrefix

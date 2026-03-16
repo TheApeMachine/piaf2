@@ -224,7 +224,8 @@ func TestEditorJumpMode(t *testing.T) {
 	convey.Convey("Given an Editor with more matching jump targets than the alphabet", t, func() {
 		ed := NewEditor(EditorWithSize(80, 6))
 		ed.Write(encodeRune('i'))
-		for _, r := range "a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a" {
+		repeatedTargets := strings.TrimSpace(strings.Repeat("a ", len(jumpAlphabet)+3))
+		for _, r := range repeatedTargets {
 			ed.Write(encodeRune(r))
 		}
 		ed.Write(encodeSpecial(event.KeyEsc))
