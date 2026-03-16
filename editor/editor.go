@@ -19,6 +19,7 @@ const (
 )
 
 const jumpAlphabet = "asdfghjklqwertyuiopzxcvbnm"
+const jumpPromptTarget = "target"
 
 var jumpAlphabetLookup = newJumpAlphabetLookup()
 
@@ -40,6 +41,7 @@ type Editor struct {
 	mode          string
 	commandLine   []rune
 	quitRequested bool
+	jumpNeedle    rune
 	jumpPrefix    string
 	jumpTargets   []jumpTarget
 	jumpCodeLen   int
@@ -633,7 +635,7 @@ func (ed *Editor) render() {
 
 		lines = styleExplorerLines(lines)
 		cursorCol = 0
-	} else if !ed.jumpActive() {
+	} else if !ed.jumpActive() || ed.jumpNeedle == 0 {
 		lines = styleCodeLines(lines, ed.path)
 	}
 
@@ -643,8 +645,12 @@ func (ed *Editor) render() {
 		cursorCol = 0
 		cmdLine = ""
 	} else if ed.jumpActive() {
-		lines = ed.jumpLines(lines)
-		cmdLine = styleBold + styleFgHighlight + "f " + styleReset + ed.jumpPrefix
+		if ed.jumpNeedle == 0 {
+			cmdLine = styleBold + styleFgHighlight + "f " + styleReset + jumpPromptTarget
+		} else {
+			lines = ed.jumpLines(lines)
+			cmdLine = styleBold + styleFgHighlight + "f " + styleReset + string(ed.jumpNeedle) + ed.jumpPrefix
+		}
 	} else if ed.mode == modeCommand {
 		cmdLine = styleBold + styleFgBrand + ": " + styleReset + string(ed.commandLine)
 		cursorRow = ed.buffer.height - 1
@@ -784,13 +790,15 @@ func (ed *Editor) jumpActive() bool {
 clearJump exits jump mode by resetting all jump state.
 */
 func (ed *Editor) clearJump() {
+	ed.jumpNeedle = 0
 	ed.jumpPrefix = ""
 	ed.jumpTargets = nil
 	ed.jumpCodeLen = 0
 }
 
 /*
-startJump initiates jump mode by discovering visible targets and assigning label codes.
+startJump initiates jump mode by discovering visible targets.
+The next rune selects which character to jump toward before labels are assigned.
 */
 func (ed *Editor) startJump() {
 	targets := ed.visibleJumpTargets()
@@ -799,25 +807,28 @@ func (ed *Editor) startJump() {
 		return
 	}
 
-	codeLen := jumpCodeLength(len(targets))
-
-	for index := range targets {
-		targets[index].code = jumpCode(index, codeLen)
-	}
-
+	ed.jumpNeedle = 0
 	ed.jumpPrefix = ""
 	ed.jumpTargets = targets
-	ed.jumpCodeLen = codeLen
+	ed.jumpCodeLen = 0
 }
 
 /*
 handleJumpRune processes a rune during jump mode.
-It returns true if the rune was consumed by jump mode.
+It first narrows jump targets to a chosen character, then consumes label runes.
 */
 func (ed *Editor) handleJumpRune(r rune) bool {
 	if !ed.jumpActive() {
 		return false
 	}
+
+	if ed.jumpNeedle == 0 {
+		ed.selectJumpTargets(r)
+
+		return true
+	}
+
+	r = unicode.ToLower(r)
 
 	if r >= 256 || !jumpAlphabetLookup[byte(r)] {
 		ed.clearJump()
@@ -849,6 +860,40 @@ func (ed *Editor) handleJumpRune(r rune) bool {
 }
 
 /*
+selectJumpTargets narrows visible jump targets to the requested character.
+It jumps immediately when the character is unique on screen.
+*/
+func (ed *Editor) selectJumpTargets(r rune) {
+	needle := unicode.ToLower(r)
+	targets := ed.jumpTargetsForNeedle(needle)
+
+	if len(targets) == 0 {
+		ed.clearJump()
+
+		return
+	}
+
+	if len(targets) == 1 {
+		ed.buffer.cursorRow = targets[0].row
+		ed.buffer.cursorCol = targets[0].col
+		ed.clearJump()
+
+		return
+	}
+
+	codeLen := jumpCodeLength(len(targets))
+
+	for index := range targets {
+		targets[index].code = jumpCode(index, codeLen)
+	}
+
+	ed.jumpNeedle = needle
+	ed.jumpPrefix = ""
+	ed.jumpTargets = targets
+	ed.jumpCodeLen = codeLen
+}
+
+/*
 visibleJumpTargets collects all navigable positions in the visible buffer area.
 */
 func (ed *Editor) visibleJumpTargets() []jumpTarget {
@@ -876,6 +921,28 @@ func (ed *Editor) visibleJumpTargets() []jumpTarget {
 			}
 
 			targets = append(targets, jumpTarget{row: row, col: col})
+		}
+	}
+
+	return targets
+}
+
+/*
+jumpTargetsForNeedle returns visible jump targets whose rune matches needle.
+Matching is case-insensitive so target selection stays lightweight.
+*/
+func (ed *Editor) jumpTargetsForNeedle(needle rune) []jumpTarget {
+	targets := make([]jumpTarget, 0, len(ed.jumpTargets))
+
+	for _, target := range ed.jumpTargets {
+		line := ed.buffer.lines[target.row]
+
+		if target.col >= len(line) {
+			continue
+		}
+
+		if unicode.ToLower(line[target.col]) == needle {
+			targets = append(targets, target)
 		}
 	}
 
