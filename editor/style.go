@@ -1,8 +1,10 @@
 package editor
 
 import (
+	"path/filepath"
 	"strings"
 	"sync"
+	"unicode"
 )
 
 const (
@@ -26,6 +28,63 @@ const (
 
 var separatorLineCache sync.Map
 
+type syntaxSpec struct {
+	lineComment string
+	keywords    map[string]struct{}
+	builtins    map[string]struct{}
+	literals    map[string]struct{}
+}
+
+var (
+	goSyntaxSpec = syntaxSpec{
+		lineComment: "//",
+		keywords: keywordSet(
+			"break", "case", "chan", "const", "continue", "default", "defer", "else", "fallthrough",
+			"for", "func", "go", "goto", "if", "import", "interface", "map", "package", "range",
+			"return", "select", "struct", "switch", "type", "var",
+		),
+		builtins: keywordSet(
+			"any", "append", "bool", "byte", "cap", "close", "comparable", "complex", "complex64",
+			"complex128", "copy", "delete", "error", "false", "float32", "float64", "imag", "int",
+			"int8", "int16", "int32", "int64", "iota", "len", "make", "new", "nil", "panic", "print",
+			"println", "real", "recover", "rune", "string", "true", "uint", "uint8", "uint16", "uint32",
+			"uint64", "uintptr",
+		),
+	}
+	jsonSyntaxSpec = syntaxSpec{
+		literals: keywordSet("true", "false", "null"),
+	}
+	yamlSyntaxSpec = syntaxSpec{
+		lineComment: "#",
+		literals:    keywordSet("true", "false", "null"),
+	}
+	jsSyntaxSpec = syntaxSpec{
+		lineComment: "//",
+		keywords: keywordSet(
+			"async", "await", "break", "case", "catch", "class", "const", "continue", "default",
+			"do", "else", "export", "extends", "finally", "for", "from", "function", "if", "import",
+			"interface", "let", "new", "return", "switch", "throw", "try", "type", "var", "while",
+		),
+		literals: keywordSet("false", "null", "true", "undefined"),
+	}
+	pythonSyntaxSpec = syntaxSpec{
+		lineComment: "#",
+		keywords: keywordSet(
+			"and", "as", "assert", "break", "class", "continue", "def", "elif", "else", "except",
+			"finally", "for", "from", "if", "import", "in", "is", "lambda", "not", "or", "pass",
+			"raise", "return", "try", "while", "with", "yield",
+		),
+		literals: keywordSet("False", "None", "True"),
+	}
+	shellSyntaxSpec = syntaxSpec{
+		lineComment: "#",
+		keywords: keywordSet(
+			"case", "do", "done", "elif", "else", "esac", "fi", "for", "function", "if", "in",
+			"select", "then", "until", "while",
+		),
+	}
+)
+
 /*
 styleChatLines applies ANSI color codes to wrapped chat lines.
 Operates on already-wrapped text so line widths are unaffected.
@@ -38,6 +97,98 @@ func styleChatLines(lines []string, width int) []string {
 	}
 
 	return styled
+}
+
+func styleCodeLines(lines []string, path string) []string {
+	spec := syntaxSpecForPath(path)
+	if spec == nil {
+		return lines
+	}
+
+	styled := make([]string, len(lines))
+
+	for index, line := range lines {
+		styled[index] = styleCodeLine(line, spec)
+	}
+
+	return styled
+}
+
+func styleCodeLine(line string, spec *syntaxSpec) string {
+	if line == "" || spec == nil {
+		return line
+	}
+
+	runes := []rune(line)
+	var out strings.Builder
+	out.Grow(len(line) + 32)
+
+	for index := 0; index < len(runes); {
+		if spec.lineComment != "" && hasRunesPrefix(runes[index:], spec.lineComment) {
+			out.WriteString(styleDim)
+			out.WriteString(styleFgGray)
+			out.WriteString(string(runes[index:]))
+			out.WriteString(styleReset)
+			break
+		}
+
+		if hasRunesPrefix(runes[index:], "/*") {
+			out.WriteString(styleDim)
+			out.WriteString(styleFgGray)
+			out.WriteString(string(runes[index:]))
+			out.WriteString(styleReset)
+			break
+		}
+
+		if isQuoteRune(runes[index]) {
+			end := consumeQuotedRunes(runes, index)
+			out.WriteString(styleFgGreen)
+			out.WriteString(string(runes[index:end]))
+			out.WriteString(styleReset)
+			index = end
+			continue
+		}
+
+		if isNumberStart(runes, index) {
+			end := consumeNumberRunes(runes, index)
+			out.WriteString(styleFgYellow)
+			out.WriteString(string(runes[index:end]))
+			out.WriteString(styleReset)
+			index = end
+			continue
+		}
+
+		if isIdentifierStart(runes[index]) {
+			end := consumeIdentifierRunes(runes, index)
+			word := string(runes[index:end])
+
+			switch {
+			case syntaxContains(spec.keywords, word):
+				out.WriteString(styleBold)
+				out.WriteString(styleFgMagenta)
+				out.WriteString(word)
+				out.WriteString(styleReset)
+			case syntaxContains(spec.builtins, word):
+				out.WriteString(styleFgCyan)
+				out.WriteString(word)
+				out.WriteString(styleReset)
+			case syntaxContains(spec.literals, word):
+				out.WriteString(styleFgYellow)
+				out.WriteString(word)
+				out.WriteString(styleReset)
+			default:
+				out.WriteString(word)
+			}
+
+			index = end
+			continue
+		}
+
+		out.WriteRune(runes[index])
+		index++
+	}
+
+	return out.String()
 }
 
 func styleChatLine(line string, width int) string {
@@ -178,6 +329,121 @@ func styleRoleLabel(line, styleCode string) string {
 	}
 
 	return styleBold + styleCode + line + styleReset
+}
+
+func keywordSet(words ...string) map[string]struct{} {
+	set := make(map[string]struct{}, len(words))
+
+	for _, word := range words {
+		set[word] = struct{}{}
+	}
+
+	return set
+}
+
+func syntaxSpecForPath(path string) *syntaxSpec {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".go":
+		return &goSyntaxSpec
+	case ".json":
+		return &jsonSyntaxSpec
+	case ".yaml", ".yml":
+		return &yamlSyntaxSpec
+	case ".js", ".jsx", ".ts", ".tsx":
+		return &jsSyntaxSpec
+	case ".py":
+		return &pythonSyntaxSpec
+	case ".sh", ".bash", ".zsh":
+		return &shellSyntaxSpec
+	default:
+		return nil
+	}
+}
+
+func syntaxContains(set map[string]struct{}, word string) bool {
+	if len(set) == 0 {
+		return false
+	}
+
+	_, ok := set[word]
+
+	return ok
+}
+
+func hasRunesPrefix(runes []rune, prefix string) bool {
+	if len(runes) < len(prefix) {
+		return false
+	}
+
+	for index, expected := range prefix {
+		if runes[index] != expected {
+			return false
+		}
+	}
+
+	return true
+}
+
+func isQuoteRune(r rune) bool {
+	return r == '"' || r == '\'' || r == '`'
+}
+
+func consumeQuotedRunes(runes []rune, start int) int {
+	quote := runes[start]
+
+	for index := start + 1; index < len(runes); index++ {
+		if quote != '`' && runes[index] == '\\' {
+			index++
+			continue
+		}
+
+		if runes[index] == quote {
+			return index + 1
+		}
+	}
+
+	return len(runes)
+}
+
+func isNumberStart(runes []rune, index int) bool {
+	if !unicode.IsDigit(runes[index]) {
+		return false
+	}
+
+	if index == 0 {
+		return true
+	}
+
+	return !isIdentifierPart(runes[index-1])
+}
+
+func consumeNumberRunes(runes []rune, start int) int {
+	for index := start + 1; index < len(runes); index++ {
+		r := runes[index]
+		if !(unicode.IsDigit(r) || unicode.IsLetter(r) || r == '.' || r == '_') {
+			return index
+		}
+	}
+
+	return len(runes)
+}
+
+func isIdentifierStart(r rune) bool {
+	return r == '_' || unicode.IsLetter(r)
+}
+
+func isIdentifierPart(r rune) bool {
+	return isIdentifierStart(r) || unicode.IsDigit(r)
+}
+
+func consumeIdentifierRunes(runes []rune, start int) int {
+	for index := start + 1; index < len(runes); index++ {
+		if !isIdentifierPart(runes[index]) {
+			return index
+		}
+	}
+
+	return len(runes)
 }
 
 /*

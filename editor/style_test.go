@@ -147,6 +147,46 @@ func TestStyleExplorerLines(t *testing.T) {
 	})
 }
 
+func TestStyleCodeLines(t *testing.T) {
+	convey.Convey("Given styleCodeLines", t, func() {
+
+		convey.Convey("When styling Go source", func() {
+			lines := styleCodeLines([]string{
+				"func main() {",
+				"\tmessage := \"hello\"",
+				"\treturn 42 // answer",
+				"}",
+			}, "main.go")
+
+			convey.Convey("It should highlight keywords, strings, numbers and comments", func() {
+				convey.So(lines[0], convey.ShouldContainSubstring, styleBold+styleFgMagenta+"func"+styleReset)
+				convey.So(lines[1], convey.ShouldContainSubstring, styleFgGreen+"\"hello\""+styleReset)
+				convey.So(lines[2], convey.ShouldContainSubstring, styleBold+styleFgMagenta+"return"+styleReset)
+				convey.So(lines[2], convey.ShouldContainSubstring, styleFgYellow+"42"+styleReset)
+				convey.So(lines[2], convey.ShouldContainSubstring, styleDim+styleFgGray+"// answer"+styleReset)
+			})
+		})
+
+		convey.Convey("When styling JSON content", func() {
+			lines := styleCodeLines([]string{`{"enabled": true, "count": 3}`}, "config.json")
+
+			convey.Convey("It should highlight strings, literals and numbers", func() {
+				convey.So(lines[0], convey.ShouldContainSubstring, styleFgGreen+`"enabled"`+styleReset)
+				convey.So(lines[0], convey.ShouldContainSubstring, styleFgYellow+"true"+styleReset)
+				convey.So(lines[0], convey.ShouldContainSubstring, styleFgYellow+"3"+styleReset)
+			})
+		})
+
+		convey.Convey("When styling an unsupported file", func() {
+			lines := styleCodeLines([]string{"plain text only"}, "README.md")
+
+			convey.Convey("It should leave the content unchanged", func() {
+				convey.So(lines[0], convey.ShouldEqual, "plain text only")
+			})
+		})
+	})
+}
+
 func TestStyleChatLineSeparatorWidth(t *testing.T) {
 	convey.Convey("Given styleChatLine with a separator", t, func() {
 
@@ -195,5 +235,22 @@ func BenchmarkStyleExplorerLines(b *testing.B) {
 
 	for b.Loop() {
 		styleExplorerLines(lines)
+	}
+}
+
+func BenchmarkStyleCodeLines(b *testing.B) {
+	lines := []string{
+		"package main",
+		"",
+		"import \"fmt\"",
+		"",
+		"func main() {",
+		"\tmessage := \"hello\"",
+		"\tfmt.Println(message, 42)",
+		"}",
+	}
+
+	for b.Loop() {
+		styleCodeLines(lines, "main.go")
 	}
 }
