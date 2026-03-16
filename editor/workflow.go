@@ -240,7 +240,7 @@ func (workflow *Workflow) DeveloperCount() int {
 }
 
 /*
-AssignDeveloper records a team lead assignment line.
+AssignDeveloper records an architect staffing assignment line.
 */
 func (workflow *Workflow) AssignDeveloper(index int, task string) string {
 	return fmt.Sprintf("Architect assignment: Developer %d owns %s.", index, task)

@@ -448,7 +448,7 @@ func (chat *Chat) submitImplementation(message string) {
 	}
 
 	projectManager := order[projectManagerProviderOffset]
-	pmPrompt := "Scan the recent conversation together with the architect's intent. Turn it into a roadmap and kanban. Output ## Epic: Title, ### Story: Title, and #### Task: Title lines. Keep tasks parallelizable when possible, preserve risks, and make the board easy for the user to follow."
+	pmPrompt := "Scan the recent conversation and turn it into a roadmap and kanban. Output ## Epic: Title, ### Story: Title, and #### Task: Title lines. Keep tasks parallelizable when possible, preserve risks, and make the board easy for the user to follow."
 	projectRequest := chat.implementationRequest("Project Manager", message, baseToolOutput, pmPrompt, transcript, responses)
 	line, response := chat.runStage("Project Manager ["+projectManager.Name()+"]", projectManager, projectRequest)
 	transcript = append(transcript, line)
