@@ -755,7 +755,7 @@ func (ed *Editor) render() {
 		cmdLine = ""
 	} else if ed.jumpActive() {
 		lines = ed.jumpLines(lines)
-		cmdLine = styleBold + styleFgHighlight + "f " + styleReset + jumpPromptTarget
+		cmdLine = styleBold + styleFgHighlight() + "f " + styleReset + jumpPromptTarget
 		if ed.jumpPrefix != "" {
 			cmdLine += " " + ed.jumpPrefix
 		}
