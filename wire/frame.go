@@ -107,7 +107,11 @@ func (frame *Frame) Write(p []byte) (n int, err error) {
 		return 0, io.ErrShortBuffer
 	}
 
-	frame.Lines = make([]string, 0, numLines)
+	if cap(frame.Lines) < int(numLines) {
+		frame.Lines = make([]string, 0, numLines)
+	} else {
+		frame.Lines = frame.Lines[:0]
+	}
 
 	for index := uint32(0); index < numLines; index++ {
 		if offset+4 > len(p) {

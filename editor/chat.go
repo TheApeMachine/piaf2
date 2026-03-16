@@ -27,6 +27,8 @@ const (
 	reviewProviderOffset         = 5
 )
 
+var sanitizeBranchNameRe = regexp.MustCompile("[^a-z0-9]+")
+
 /*
 Chat renders the multi-model discussion and implementation transcript.
 It keeps a running context and can inspect files inside the workspace.
@@ -361,14 +363,18 @@ type chatToolBackend struct {
 	chat *Chat
 }
 
-func (backend *chatToolBackend) Browse(path string) string   { return backend.chat.browse(path) }
+func (backend *chatToolBackend) Browse(path string) string { return backend.chat.browse(path) }
 func (backend *chatToolBackend) Read(path string, start, end int) string {
 	return backend.chat.read(path, start, end)
 }
-func (backend *chatToolBackend) Remember(content string) string { return backend.chat.remember(content) }
-func (backend *chatToolBackend) Recall(filter string) string  { return backend.chat.recall(filter) }
-func (backend *chatToolBackend) Forget(filter string) string  { return backend.chat.forget(filter) }
-func (backend *chatToolBackend) Search(query, target string) string { return backend.chat.search(query, target) }
+func (backend *chatToolBackend) Remember(content string) string {
+	return backend.chat.remember(content)
+}
+func (backend *chatToolBackend) Recall(filter string) string { return backend.chat.recall(filter) }
+func (backend *chatToolBackend) Forget(filter string) string { return backend.chat.forget(filter) }
+func (backend *chatToolBackend) Search(query, target string) string {
+	return backend.chat.search(query, target)
+}
 
 func (chat *Chat) submitDiscussion(message string) {
 	order := chat.randomizedModels()
@@ -391,7 +397,7 @@ func (chat *Chat) submitDiscussion(message string) {
 			systemPrompt = "You are a specialized AI assistant. The root directory of the project is: " + chat.root
 		}
 		limitedExecutor := provider.WithToolLimit(provider.NewDiscussionToolExecutor(toolBackend), 8)
-		
+
 		request := &provider.Request{
 			Mode:          chat.mode,
 			Message:       message,
@@ -765,7 +771,7 @@ func (chat *Chat) implementationDeveloperRequest(role string, message string, ba
 	}
 
 	limitedExecutor := provider.WithToolLimit(rawExecutor, 8)
-	
+
 	request.ToolExecutor = func(name string, args map[string]any) (string, error) {
 		chat.dumpStage(role+" Subsystem", fmt.Sprintf("Tool Execution: %s\nArgs: %v", name, args))
 		res, err := limitedExecutor(name, args)
@@ -1101,8 +1107,7 @@ func (chat *Chat) relative(path string) string {
 
 func sanitizeBranchName(message string) string {
 	msg := strings.ToLower(message)
-	reg := regexp.MustCompile("[^a-z0-9]+")
-	name := reg.ReplaceAllString(msg, "-")
+	name := sanitizeBranchNameRe.ReplaceAllString(msg, "-")
 	name = strings.Trim(name, "-")
 	if len(name) > 40 {
 		name = name[:40]

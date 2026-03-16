@@ -147,6 +147,62 @@ func TestStyleExplorerLines(t *testing.T) {
 	})
 }
 
+func TestStyleCodeLines(t *testing.T) {
+	convey.Convey("Given styleCodeLines", t, func() {
+
+		convey.Convey("When styling Go source", func() {
+			lines := styleCodeLines([]string{
+				"func main() {",
+				"\tmessage := \"hello\"",
+				"\treturn 42 // answer",
+				"\tvalue := /* inline */ 7",
+				"}",
+			}, "main.go")
+
+			convey.Convey("It should highlight keywords, strings, numbers and comments", func() {
+				convey.So(lines[0], convey.ShouldContainSubstring, styleBold+styleFgMagenta+"func"+styleReset)
+				convey.So(lines[1], convey.ShouldContainSubstring, styleFgGreen+"\"hello\""+styleReset)
+				convey.So(lines[2], convey.ShouldContainSubstring, styleBold+styleFgMagenta+"return"+styleReset)
+				convey.So(lines[2], convey.ShouldContainSubstring, styleFgYellow+"42"+styleReset)
+				convey.So(lines[2], convey.ShouldContainSubstring, styleDim+styleFgGray+"// answer"+styleReset)
+				convey.So(lines[3], convey.ShouldContainSubstring, styleDim+styleFgGray+"/* inline */"+styleReset)
+				convey.So(lines[3], convey.ShouldContainSubstring, styleFgYellow+"7"+styleReset)
+			})
+		})
+
+		convey.Convey("When styling JSON content", func() {
+			lines := styleCodeLines([]string{`{"enabled": true, "count": 3}`}, "config.json")
+
+			convey.Convey("It should highlight strings, literals and numbers", func() {
+				convey.So(lines[0], convey.ShouldContainSubstring, styleFgGreen+`"enabled"`+styleReset)
+				convey.So(lines[0], convey.ShouldContainSubstring, styleFgYellow+"true"+styleReset)
+				convey.So(lines[0], convey.ShouldContainSubstring, styleFgYellow+"3"+styleReset)
+			})
+		})
+
+		convey.Convey("When styling an unsupported file", func() {
+			lines := styleCodeLines([]string{"plain text only"}, "README.md")
+
+			convey.Convey("It should leave the content unchanged", func() {
+				convey.So(lines[0], convey.ShouldEqual, "plain text only")
+			})
+		})
+	})
+}
+
+func TestStyleCodeLine(t *testing.T) {
+	convey.Convey("Given styleCodeLine", t, func() {
+
+		convey.Convey("When a number is followed by identifier text", func() {
+			line := styleCodeLine("value := 42abc", &goSyntaxSpec)
+
+			convey.Convey("It should only highlight the numeric portion", func() {
+				convey.So(line, convey.ShouldContainSubstring, styleFgYellow+"42"+styleReset+"abc")
+			})
+		})
+	})
+}
+
 func TestStyleChatLineSeparatorWidth(t *testing.T) {
 	convey.Convey("Given styleChatLine with a separator", t, func() {
 
@@ -185,7 +241,7 @@ func BenchmarkStyleChatLines(b *testing.B) {
 		"just some regular text continuation",
 	}
 
-	for b.Loop() {
+	for index := 0; index < b.N; index++ {
 		styleChatLines(lines, 80)
 	}
 }
@@ -193,7 +249,24 @@ func BenchmarkStyleChatLines(b *testing.B) {
 func BenchmarkStyleExplorerLines(b *testing.B) {
 	lines := []string{"..", "cmd/", "editor/", "tui/", "main.go", "go.mod", "README.md"}
 
-	for b.Loop() {
+	for index := 0; index < b.N; index++ {
 		styleExplorerLines(lines)
+	}
+}
+
+func BenchmarkStyleCodeLines(b *testing.B) {
+	lines := []string{
+		"package main",
+		"",
+		"import \"fmt\"",
+		"",
+		"func main() {",
+		"\tmessage := \"hello\"",
+		"\tfmt.Println(message, 42)",
+		"}",
+	}
+
+	for index := 0; index < b.N; index++ {
+		styleCodeLines(lines, "main.go")
 	}
 }

@@ -1,8 +1,8 @@
 package tui
 
 import (
-	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/theapemachine/piaf/wire"
@@ -47,6 +47,15 @@ type Renderer struct {
 	output      []byte
 	readOffset  int
 	alternateOn bool
+	frame       wire.Frame
+	lastLines   []string
+	lastStatus  string
+	lastWidth   int
+	lastHeight  int
+
+	statusMode  string
+	statusWidth int
+	statusLine  string
 }
 
 /*
@@ -79,15 +88,65 @@ func (renderer *Renderer) Write(p []byte) (n int, err error) {
 		return 0, nil
 	}
 
-	frame := &wire.Frame{}
+	frame := &renderer.frame
 	if _, err := frame.Write(p); err != nil {
 		return 0, err
 	}
 
-	estimatedSize := 128
+	height := int(frame.Height)
+	width := int(frame.Width)
+	maxLines := 0
+	if height > 0 {
+		maxLines = height - 1
+	}
 
-	for _, line := range frame.Lines {
-		estimatedSize += len(line) + len(ansiClearLine) + 2
+	visibleLines := len(frame.Lines)
+	if visibleLines > maxLines {
+		visibleLines = maxLines
+	}
+
+	statusLine := frame.CommandLine
+	if statusLine == "" && frame.Mode != "" {
+		statusLine = renderer.cachedStatusBar(frame.Mode, width)
+	}
+
+	fullRedraw := !renderer.alternateOn || height != renderer.lastHeight || width != renderer.lastWidth
+	estimatedSize := len(statusLine) + 64
+
+	if fullRedraw {
+		for index := 0; index < visibleLines; index++ {
+			estimatedSize += len(frame.Lines[index]) + len(ansiClearLine) + 8
+		}
+	} else {
+		prevVisibleLines := len(renderer.lastLines)
+		if prevVisibleLines > renderer.lastHeight-1 {
+			prevVisibleLines = renderer.lastHeight - 1
+		}
+
+		maxVisibleLines := visibleLines
+		if prevVisibleLines > maxVisibleLines {
+			maxVisibleLines = prevVisibleLines
+		}
+
+		for index := 0; index < maxVisibleLines; index++ {
+			currentLine := ""
+			if index < visibleLines {
+				currentLine = frame.Lines[index]
+			}
+
+			previousLine := ""
+			if index < prevVisibleLines {
+				previousLine = renderer.lastLines[index]
+			}
+
+			if currentLine != previousLine {
+				estimatedSize += len(currentLine) + len(ansiClearLine) + 16
+			}
+		}
+
+		if statusLine != renderer.lastStatus {
+			estimatedSize += len(statusLine) + len(ansiClearLine) + 16
+		}
 	}
 
 	if cap(renderer.output) < estimatedSize {
@@ -104,35 +163,69 @@ func (renderer *Renderer) Write(p []byte) (n int, err error) {
 	}
 
 	renderer.output = append(renderer.output, ansiHideCursor...)
-	renderer.output = append(renderer.output, ansiCursorHome...)
 
-	maxLines := int(frame.Height) - 1
+	if fullRedraw {
+		renderer.output = append(renderer.output, ansiCursorHome...)
 
-	for index, line := range frame.Lines {
-		if index >= maxLines {
-			break
+		for index := 0; index < visibleLines; index++ {
+			renderer.output = append(renderer.output, ansiClearLine...)
+			renderer.output = append(renderer.output, frame.Lines[index]...)
+			renderer.output = append(renderer.output, '\r', '\n')
 		}
 
+		renderer.output = append(renderer.output, ansiClearDown...)
+		renderer.output = appendCursorPos(renderer.output, height, 1)
 		renderer.output = append(renderer.output, ansiClearLine...)
-		renderer.output = append(renderer.output, line...)
-		renderer.output = append(renderer.output, '\r', '\n')
-	}
+		if statusLine != "" {
+			renderer.output = append(renderer.output, statusLine...)
+		}
+	} else {
+		prevVisibleLines := len(renderer.lastLines)
+		if prevVisibleLines > renderer.lastHeight-1 {
+			prevVisibleLines = renderer.lastHeight - 1
+		}
 
-	renderer.output = append(renderer.output, ansiClearDown...) // clear any leftover lines from previous longer frames
+		maxVisibleLines := visibleLines
+		if prevVisibleLines > maxVisibleLines {
+			maxVisibleLines = prevVisibleLines
+		}
 
-	renderer.output = append(renderer.output, fmt.Sprintf(ansiCursorPos, int(frame.Height), 1)...)
-	renderer.output = append(renderer.output, ansiClearLine...)
+		for index := 0; index < maxVisibleLines; index++ {
+			currentLine := ""
+			if index < visibleLines {
+				currentLine = frame.Lines[index]
+			}
 
-	if frame.CommandLine != "" {
-		renderer.output = append(renderer.output, frame.CommandLine...)
-	} else if frame.Mode != "" {
-		renderer.output = append(renderer.output, styledStatusBar(frame.Mode, int(frame.Width))...)
+			previousLine := ""
+			if index < prevVisibleLines {
+				previousLine = renderer.lastLines[index]
+			}
+
+			if currentLine == previousLine {
+				continue
+			}
+
+			renderer.output = appendCursorPos(renderer.output, index+1, 1)
+			renderer.output = append(renderer.output, ansiClearLine...)
+			if currentLine != "" {
+				renderer.output = append(renderer.output, currentLine...)
+			}
+		}
+
+		if statusLine != renderer.lastStatus {
+			renderer.output = appendCursorPos(renderer.output, height, 1)
+			renderer.output = append(renderer.output, ansiClearLine...)
+			if statusLine != "" {
+				renderer.output = append(renderer.output, statusLine...)
+			}
+		}
 	}
 
 	row := int(frame.CursorRow) + 1
 	col := int(frame.CursorCol) + 1
-	renderer.output = append(renderer.output, fmt.Sprintf(ansiCursorPos, row, col)...)
+	renderer.output = appendCursorPos(renderer.output, row, col)
 	renderer.output = append(renderer.output, ansiShowCursor...)
+	renderer.storeFrame(frame.Lines[:visibleLines], statusLine, width, height)
 
 	return len(p), nil
 }
@@ -146,9 +239,48 @@ func (renderer *Renderer) Close() error {
 		renderer.output = append(renderer.output[:0], ansiExitAlternate...)
 		renderer.readOffset = 0
 		renderer.alternateOn = false
+		renderer.lastLines = renderer.lastLines[:0]
+		renderer.lastStatus = ""
+		renderer.lastWidth = 0
+		renderer.lastHeight = 0
 	}
 
 	return nil
+}
+
+func (renderer *Renderer) cachedStatusBar(mode string, width int) string {
+	if mode == renderer.statusMode && width == renderer.statusWidth {
+		return renderer.statusLine
+	}
+
+	renderer.statusMode = mode
+	renderer.statusWidth = width
+	renderer.statusLine = styledStatusBar(mode, width)
+
+	return renderer.statusLine
+}
+
+func (renderer *Renderer) storeFrame(lines []string, statusLine string, width, height int) {
+	if cap(renderer.lastLines) < len(lines) {
+		renderer.lastLines = make([]string, len(lines))
+	} else {
+		renderer.lastLines = renderer.lastLines[:len(lines)]
+	}
+
+	copy(renderer.lastLines, lines)
+	renderer.lastStatus = statusLine
+	renderer.lastWidth = width
+	renderer.lastHeight = height
+}
+
+func appendCursorPos(dst []byte, row, col int) []byte {
+	dst = append(dst, '\033', '[')
+	dst = strconv.AppendInt(dst, int64(row), 10)
+	dst = append(dst, ';')
+	dst = strconv.AppendInt(dst, int64(col), 10)
+	dst = append(dst, 'H')
+
+	return dst
 }
 
 func styledStatusBar(mode string, width int) string {
