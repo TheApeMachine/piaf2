@@ -5,10 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
 	"github.com/theapemachine/piaf/event"
+	"github.com/theapemachine/piaf/theme"
 	"github.com/theapemachine/piaf/wire"
 )
 
@@ -33,10 +35,12 @@ type Editor struct {
 	explorer      *Explorer
 	palette       *Palette
 	kanbanView    *KanbanView
+	colorPicker   *theme.Picker
 	inChat        bool
 	inExplorer    bool
 	inPalette     bool
 	inKanban      bool
+	inColorPicker bool
 	path          string
 	mode          string
 	commandLine   []rune
@@ -211,6 +215,13 @@ func (ed *Editor) Close() error {
 }
 
 func (ed *Editor) handleKey(key event.Key) {
+	if ed.inColorPicker {
+		ed.handleColorPickerKey(key)
+		ed.render()
+
+		return
+	}
+
 	if ed.jumpActive() {
 		ed.clearJump()
 		ed.render()
@@ -312,6 +323,13 @@ func (ed *Editor) handleKey(key event.Key) {
 }
 
 func (ed *Editor) handleRune(r rune) {
+	if ed.inColorPicker {
+		ed.handleColorPickerRune(r)
+		ed.render()
+
+		return
+	}
+
 	if ed.inPalette {
 		ed.palette.Append(r)
 		ed.render()
@@ -521,6 +539,8 @@ func (ed *Editor) executeCommand() {
 			ed.inKanban = true
 			ed.kanbanView = NewKanbanView(ed.chat.Kanban(), ed.buffer.width)
 		}
+	case "theme":
+		ed.executeThemeCommand(arg)
 	}
 }
 
@@ -570,6 +590,81 @@ func trimLeftSpaces(runes []rune) []rune {
 	}
 
 	return nil
+}
+
+func (ed *Editor) handleColorPickerKey(key event.Key) {
+	switch key {
+	case event.KeyEsc, event.KeyEnter:
+		ed.inColorPicker = false
+		ed.colorPicker = nil
+		separatorLineCache = sync.Map{}
+	case event.KeyUp:
+		ed.colorPicker.MoveUp()
+	case event.KeyDown:
+		ed.colorPicker.MoveDown()
+	case event.KeyLeft:
+		ed.colorPicker.Decrease(5)
+	case event.KeyRight:
+		ed.colorPicker.Increase(5)
+	}
+}
+
+func (ed *Editor) handleColorPickerRune(r rune) {
+	switch r {
+	case 'j':
+		ed.colorPicker.MoveDown()
+	case 'k':
+		ed.colorPicker.MoveUp()
+	case 'h':
+		ed.colorPicker.Decrease(5)
+	case 'l':
+		ed.colorPicker.Increase(5)
+	case 'H':
+		ed.colorPicker.Decrease(1)
+	case 'L':
+		ed.colorPicker.Increase(1)
+	case '\t':
+		ed.colorPicker.CycleChannel()
+	}
+}
+
+func (ed *Editor) openColorPicker() {
+	ed.colorPicker = theme.NewPicker(theme.Active())
+	ed.inColorPicker = true
+}
+
+func (ed *Editor) executeThemeCommand(arg string) {
+	parts := strings.Fields(arg)
+	sub := ""
+	if len(parts) > 0 {
+		sub = parts[0]
+	}
+
+	subArg := ""
+	if len(parts) > 1 {
+		subArg = strings.Join(parts[1:], " ")
+	}
+
+	switch sub {
+	case "save":
+		theme.Active().Save()
+	case "load":
+		if subArg != "" {
+			if loaded, err := theme.Load(subArg); err == nil {
+				theme.SetActive(loaded)
+				separatorLineCache = sync.Map{}
+			}
+		}
+	case "rename":
+		if subArg != "" {
+			theme.Active().Rename(subArg)
+		}
+	case "edit", "picker", "":
+		ed.openColorPicker()
+	case "default":
+		theme.SetActive(theme.Default())
+		separatorLineCache = sync.Map{}
+	}
 }
 
 func (ed *Editor) render() {
@@ -639,7 +734,12 @@ func (ed *Editor) render() {
 		lines = styleCodeLines(lines, ed.path)
 	}
 
-	if ed.inPalette && ed.palette != nil {
+	if ed.inColorPicker && ed.colorPicker != nil {
+		lines = ed.colorPicker.Overlay(lines, ed.buffer.width, ed.buffer.height)
+		cursorRow = 0
+		cursorCol = 0
+		cmdLine = styleBold + styleFgBrand() + "THEME" + styleReset + " j/k:move h/l:adjust Tab:channel Enter:done"
+	} else if ed.inPalette && ed.palette != nil {
 		lines = stylePaletteOverlay(lines, ed.palette, ed.buffer.width, ed.buffer.height)
 		cursorRow = 0
 		cursorCol = 0
@@ -652,17 +752,19 @@ func (ed *Editor) render() {
 			cmdLine = styleBold + styleFgHighlight + "f " + styleReset + string(ed.jumpNeedle) + ed.jumpPrefix
 		}
 	} else if ed.mode == modeCommand {
-		cmdLine = styleBold + styleFgBrand + ": " + styleReset + string(ed.commandLine)
+		cmdLine = styleBold + styleFgBrand() + ": " + styleReset + string(ed.commandLine)
 		cursorRow = ed.buffer.height - 1
 		cursorCol = 2 + len(ed.commandLine)
 	} else if ed.mode == modeInsert && ed.inChat {
-		cmdLine = styleBold + styleFgHighlight + "> " + styleReset + string(ed.commandLine)
+		cmdLine = styleBold + styleFgHighlight() + "> " + styleReset + string(ed.commandLine)
 		cursorRow = ed.buffer.height - 1
 		cursorCol = 2 + len(ed.commandLine)
 	}
 
 	displayMode := ed.mode
-	if ed.inPalette {
+	if ed.inColorPicker {
+		displayMode = "THEME"
+	} else if ed.inPalette {
 		displayMode = "PALETTE"
 	} else if ed.inKanban {
 		displayMode = "BOARD"

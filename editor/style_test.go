@@ -2,6 +2,7 @@ package editor
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
@@ -14,7 +15,7 @@ func TestStyleChatLines(t *testing.T) {
 			lines := styleChatLines([]string{"You: hello"}, 80)
 
 			convey.Convey("It should wrap in bold brand", func() {
-				convey.So(lines[0], convey.ShouldStartWith, styleBold+styleFgBrand)
+				convey.So(lines[0], convey.ShouldStartWith, styleBold+styleFgBrand())
 				convey.So(lines[0], convey.ShouldEndWith, styleReset)
 				convey.So(lines[0], convey.ShouldContainSubstring, "You: hello")
 			})
@@ -33,7 +34,7 @@ func TestStyleChatLines(t *testing.T) {
 			lines := styleChatLines([]string{"Pipeline: A -> B -> C"}, 80)
 
 			convey.Convey("It should wrap in dim highlight", func() {
-				convey.So(lines[0], convey.ShouldStartWith, styleDim+styleFgHighlight)
+				convey.So(lines[0], convey.ShouldStartWith, styleDim+styleFgHighlight())
 				convey.So(lines[0], convey.ShouldEndWith, styleReset)
 			})
 		})
@@ -42,16 +43,17 @@ func TestStyleChatLines(t *testing.T) {
 			lines := styleChatLines([]string{"Discussion OpenAI: response text"}, 80)
 
 			convey.Convey("It should color the label and reset for the body", func() {
-				convey.So(lines[0], convey.ShouldStartWith, styleBold+styleFgBrand)
+				convey.So(lines[0], convey.ShouldStartWith, styleBold+styleFgBrand())
 				convey.So(lines[0], convey.ShouldContainSubstring, styleReset+" response text")
 			})
 		})
 
 		convey.Convey("When styling separator lines", func() {
+			separatorLineCache = sync.Map{}
 			lines := styleChatLines([]string{"---"}, 60)
 
 			convey.Convey("It should render a horizontal rule", func() {
-				convey.So(lines[0], convey.ShouldStartWith, styleFgBrand+styleDim)
+				convey.So(lines[0], convey.ShouldStartWith, styleFgBrand()+styleDim)
 				convey.So(lines[0], convey.ShouldContainSubstring, separatorChar)
 				convey.So(lines[0], convey.ShouldEndWith, styleReset)
 			})
@@ -112,12 +114,12 @@ func TestStyleChatLines(t *testing.T) {
 			lines := styleChatLines(input, 80)
 
 			convey.Convey("It should apply distinct colors per role", func() {
-				convey.So(lines[0], convey.ShouldContainSubstring, styleFgBrand)
-				convey.So(lines[1], convey.ShouldContainSubstring, styleFgHighlight)
-				convey.So(lines[2], convey.ShouldContainSubstring, styleFgBrand)
+				convey.So(lines[0], convey.ShouldContainSubstring, styleFgBrand())
+				convey.So(lines[1], convey.ShouldContainSubstring, styleFgHighlight())
+				convey.So(lines[2], convey.ShouldContainSubstring, styleFgBrand())
 				convey.So(lines[3], convey.ShouldContainSubstring, styleFgGreen)
 				convey.So(lines[4], convey.ShouldContainSubstring, styleFgYellow)
-				convey.So(lines[5], convey.ShouldContainSubstring, styleFgHighlight)
+				convey.So(lines[5], convey.ShouldContainSubstring, styleFgHighlight())
 			})
 		})
 	})
@@ -130,9 +132,9 @@ func TestStyleExplorerLines(t *testing.T) {
 			lines := styleExplorerLines([]string{"docs/", "src/", "main.go", ".."})
 
 			convey.Convey("It should color directories bold brand", func() {
-				convey.So(lines[0], convey.ShouldStartWith, styleBold+styleFgBrand)
+				convey.So(lines[0], convey.ShouldStartWith, styleBold+styleFgBrand())
 				convey.So(lines[0], convey.ShouldEndWith, styleReset)
-				convey.So(lines[1], convey.ShouldStartWith, styleBold+styleFgBrand)
+				convey.So(lines[1], convey.ShouldStartWith, styleBold+styleFgBrand())
 			})
 
 			convey.Convey("It should leave regular files unchanged", func() {
@@ -160,13 +162,13 @@ func TestStyleCodeLines(t *testing.T) {
 			}, "main.go")
 
 			convey.Convey("It should highlight keywords, strings, numbers and comments", func() {
-				convey.So(lines[0], convey.ShouldContainSubstring, styleBold+styleFgMagenta+"func"+styleReset)
-				convey.So(lines[1], convey.ShouldContainSubstring, styleFgGreen+"\"hello\""+styleReset)
-				convey.So(lines[2], convey.ShouldContainSubstring, styleBold+styleFgMagenta+"return"+styleReset)
-				convey.So(lines[2], convey.ShouldContainSubstring, styleFgYellow+"42"+styleReset)
-				convey.So(lines[2], convey.ShouldContainSubstring, styleDim+styleFgGray+"// answer"+styleReset)
-				convey.So(lines[3], convey.ShouldContainSubstring, styleDim+styleFgGray+"/* inline */"+styleReset)
-				convey.So(lines[3], convey.ShouldContainSubstring, styleFgYellow+"7"+styleReset)
+				convey.So(lines[0], convey.ShouldContainSubstring, styleBold+syntaxKeyword()+"func"+styleReset)
+				convey.So(lines[1], convey.ShouldContainSubstring, syntaxString()+"\"hello\""+styleReset)
+				convey.So(lines[2], convey.ShouldContainSubstring, styleBold+syntaxKeyword()+"return"+styleReset)
+				convey.So(lines[2], convey.ShouldContainSubstring, syntaxNumber()+"42"+styleReset)
+				convey.So(lines[2], convey.ShouldContainSubstring, syntaxComment()+"// answer"+styleReset)
+				convey.So(lines[3], convey.ShouldContainSubstring, syntaxComment()+"/* inline */"+styleReset)
+				convey.So(lines[3], convey.ShouldContainSubstring, syntaxNumber()+"7"+styleReset)
 			})
 		})
 
@@ -174,9 +176,9 @@ func TestStyleCodeLines(t *testing.T) {
 			lines := styleCodeLines([]string{`{"enabled": true, "count": 3}`}, "config.json")
 
 			convey.Convey("It should highlight strings, literals and numbers", func() {
-				convey.So(lines[0], convey.ShouldContainSubstring, styleFgGreen+`"enabled"`+styleReset)
-				convey.So(lines[0], convey.ShouldContainSubstring, styleFgYellow+"true"+styleReset)
-				convey.So(lines[0], convey.ShouldContainSubstring, styleFgYellow+"3"+styleReset)
+				convey.So(lines[0], convey.ShouldContainSubstring, syntaxString()+`"enabled"`+styleReset)
+				convey.So(lines[0], convey.ShouldContainSubstring, syntaxLiteral()+"true"+styleReset)
+				convey.So(lines[0], convey.ShouldContainSubstring, syntaxNumber()+"3"+styleReset)
 			})
 		})
 
@@ -197,7 +199,7 @@ func TestStyleCodeLine(t *testing.T) {
 			line := styleCodeLine("value := 42abc", &goSyntaxSpec)
 
 			convey.Convey("It should only highlight the numeric portion", func() {
-				convey.So(line, convey.ShouldContainSubstring, styleFgYellow+"42"+styleReset+"abc")
+				convey.So(line, convey.ShouldContainSubstring, syntaxNumber()+"42"+styleReset+"abc")
 			})
 		})
 	})
@@ -207,20 +209,22 @@ func TestStyleChatLineSeparatorWidth(t *testing.T) {
 	convey.Convey("Given styleChatLine with a separator", t, func() {
 
 		convey.Convey("When width is specified", func() {
+			separatorLineCache = sync.Map{}
 			line := styleChatLine("---", 50)
 
 			convey.Convey("It should produce a separator of that width", func() {
-				inner := strings.TrimPrefix(line, styleFgBrand+styleDim)
+				inner := strings.TrimPrefix(line, styleFgBrand()+styleDim)
 				inner = strings.TrimSuffix(inner, styleReset)
 				convey.So(len([]rune(inner)), convey.ShouldEqual, 50)
 			})
 		})
 
 		convey.Convey("When width is zero", func() {
+			separatorLineCache = sync.Map{}
 			line := styleChatLine("---", 0)
 
 			convey.Convey("It should fall back to 40 characters", func() {
-				inner := strings.TrimPrefix(line, styleFgBrand+styleDim)
+				inner := strings.TrimPrefix(line, styleFgBrand()+styleDim)
 				inner = strings.TrimSuffix(inner, styleReset)
 				convey.So(len([]rune(inner)), convey.ShouldEqual, 40)
 			})
