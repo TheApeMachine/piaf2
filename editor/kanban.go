@@ -105,13 +105,13 @@ func kanbanProgressBar(counts [5]int, total int, barWidth int) string {
 
 	out.WriteString(" ")
 
-	for idx, count := range counts {
+	for statusIndex, count := range counts {
 		segWidth := (count * (barWidth - 2)) / total
 		if count > 0 && segWidth == 0 {
 			segWidth = 1
 		}
 
-		color := kanbanStatusStyle(statuses[idx])
+		color := kanbanStatusStyle(statuses[statusIndex])
 		out.WriteString(color)
 		out.WriteString(strings.Repeat("█", segWidth))
 	}
@@ -162,8 +162,8 @@ func (view *KanbanView) Lines() []string {
 		lines = append(lines, "")
 	}
 
-	for epicIdx, epic := range view.kanban.Epics {
-		lines = append(lines, kanbanEpicLine(epic.Title, epicIdx+1, len(view.kanban.Epics)))
+	for epicIndex, epic := range view.kanban.Epics {
+		lines = append(lines, kanbanEpicLine(epic.Title, epicIndex+1, len(view.kanban.Epics)))
 		lines = append(lines, kanbanThinSeparator(view.width/2))
 
 		for _, story := range epic.Stories {
@@ -288,10 +288,10 @@ func kanbanSummaryLine(counts [5]int, total int) string {
 
 	var parts []string
 
-	for idx, status := range statuses {
-		if counts[idx] > 0 {
+	for statusIndex, status := range statuses {
+		if counts[statusIndex] > 0 {
 			parts = append(parts, fmt.Sprintf("%s%s%d %s%s",
-				status.style, styleBold, counts[idx], status.label, styleReset))
+				status.style, styleBold, counts[statusIndex], status.label, styleReset))
 		}
 	}
 
