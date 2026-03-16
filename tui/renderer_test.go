@@ -67,6 +67,79 @@ func TestRendererWrite(t *testing.T) {
 				convey.So(number, convey.ShouldEqual, 0)
 			})
 		})
+
+		convey.Convey("When the same frame is rendered twice", func() {
+			frame := &wire.Frame{
+				Lines:     []string{"hello", "world"},
+				CursorRow: 1,
+				CursorCol: 2,
+				Mode:      "NORMAL",
+				Width:     80,
+				Height:    24,
+			}
+			data, _ := io.ReadAll(frame)
+
+			_, err := renderer.Write(data)
+			convey.So(err, convey.ShouldBeNil)
+
+			first := make([]byte, 4096)
+			firstNumber, firstErr := renderer.Read(first)
+			convey.So(firstErr, convey.ShouldBeNil)
+
+			_, err = renderer.Write(data)
+			convey.So(err, convey.ShouldBeNil)
+
+			second := make([]byte, 4096)
+			secondNumber, secondErr := renderer.Read(second)
+
+			convey.Convey("It should emit a much smaller delta update", func() {
+				convey.So(secondErr, convey.ShouldBeNil)
+				convey.So(secondNumber, convey.ShouldBeLessThan, firstNumber)
+				convey.So(string(second[:secondNumber]), convey.ShouldNotContainSubstring, "hello")
+				convey.So(string(second[:secondNumber]), convey.ShouldNotContainSubstring, "world")
+			})
+		})
+
+		convey.Convey("When a later frame removes a previously rendered line", func() {
+			firstFrame := &wire.Frame{
+				Lines:     []string{"hello", "world"},
+				CursorRow: 0,
+				CursorCol: 0,
+				Mode:      "NORMAL",
+				Width:     80,
+				Height:    24,
+			}
+			secondFrame := &wire.Frame{
+				Lines:     []string{"hello"},
+				CursorRow: 0,
+				CursorCol: 0,
+				Mode:      "NORMAL",
+				Width:     80,
+				Height:    24,
+			}
+
+			firstData, _ := io.ReadAll(firstFrame)
+			secondData, _ := io.ReadAll(secondFrame)
+
+			_, err := renderer.Write(firstData)
+			convey.So(err, convey.ShouldBeNil)
+
+			drain := make([]byte, 4096)
+			_, _ = renderer.Read(drain)
+
+			_, err = renderer.Write(secondData)
+			convey.So(err, convey.ShouldBeNil)
+
+			buf := make([]byte, 4096)
+			number, readErr := renderer.Read(buf)
+
+			convey.Convey("It should clear the removed row without redrawing the unchanged row", func() {
+				convey.So(readErr, convey.ShouldBeNil)
+				convey.So(string(buf[:number]), convey.ShouldNotContainSubstring, "hello")
+				convey.So(string(buf[:number]), convey.ShouldNotContainSubstring, "world")
+				convey.So(string(buf[:number]), convey.ShouldContainSubstring, ansiClearLine)
+			})
+		})
 	})
 }
 
