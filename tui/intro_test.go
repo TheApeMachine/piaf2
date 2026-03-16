@@ -16,8 +16,8 @@ func TestNewIntro(t *testing.T) {
 				convey.So(intro, convey.ShouldNotBeNil)
 			})
 
-			convey.Convey("It should generate animation frames", func() {
-				convey.So(len(intro.frames), convey.ShouldBeGreaterThan, 0)
+			convey.Convey("It should generate 32 animation frames plus 16 hold frames", func() {
+				convey.So(len(intro.frames), convey.ShouldEqual, 48)
 			})
 		})
 
@@ -41,8 +41,20 @@ func TestIntroRead(t *testing.T) {
 			convey.Convey("It should produce ANSI output with animation frames and branding", func() {
 				convey.So(err, convey.ShouldBeNil)
 				convey.So(len(data), convey.ShouldBeGreaterThan, 0)
-				convey.So(len(intro.frames), convey.ShouldBeGreaterThan, 10)
+				convey.So(len(intro.frames), convey.ShouldEqual, 48)
 				convey.So(string(data), convey.ShouldContainSubstring, "A.I. Code Editor")
+			})
+		})
+	})
+
+	convey.Convey("Given an Intro hold frames contain a rainbow stripe", t, func() {
+		intro := NewIntro(80, 24)
+
+		convey.Convey("When examining the last hold frame", func() {
+			lastFrame := string(intro.frames[len(intro.frames)-1])
+
+			convey.Convey("It should contain the heavy horizontal box-drawing character", func() {
+				convey.So(lastFrame, convey.ShouldContainSubstring, "\u2501")
 			})
 		})
 	})
