@@ -429,14 +429,55 @@ func isNumberStart(runes []rune, index int) bool {
 }
 
 func consumeNumberRunes(runes []rune, start int) int {
-	for index := start + 1; index < len(runes); index++ {
-		r := runes[index]
-		if !(unicode.IsDigit(r) || unicode.IsLetter(r) || r == '.' || r == '_') {
+	index := start + 1
+
+	if runes[start] == '0' && index < len(runes) {
+		switch runes[index] {
+		case 'x', 'X':
+			index++
+			for index < len(runes) && (isHexDigit(runes[index]) || runes[index] == '_') {
+				index++
+			}
+			return index
+		case 'b', 'B':
+			index++
+			for index < len(runes) && ((runes[index] == '0' || runes[index] == '1') || runes[index] == '_') {
+				index++
+			}
+			return index
+		case 'o', 'O':
+			index++
+			for index < len(runes) && ((runes[index] >= '0' && runes[index] <= '7') || runes[index] == '_') {
+				index++
+			}
 			return index
 		}
 	}
 
-	return len(runes)
+	seenDot := false
+	seenExponent := false
+
+	for index < len(runes) {
+		r := runes[index]
+
+		switch {
+		case unicode.IsDigit(r) || r == '_':
+			index++
+		case r == '.' && !seenDot && !seenExponent:
+			seenDot = true
+			index++
+		case (r == 'e' || r == 'E') && !seenExponent:
+			seenExponent = true
+			index++
+			if index < len(runes) && (runes[index] == '+' || runes[index] == '-') {
+				index++
+			}
+		default:
+			return index
+		}
+	}
+
+	return index
 }
 
 func isIdentifierStart(r rune) bool {
@@ -455,6 +496,10 @@ func consumeIdentifierRunes(runes []rune, start int) int {
 	}
 
 	return len(runes)
+}
+
+func isHexDigit(r rune) bool {
+	return unicode.IsDigit(r) || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
 }
 
 /*

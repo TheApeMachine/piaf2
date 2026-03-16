@@ -190,6 +190,19 @@ func TestStyleCodeLines(t *testing.T) {
 	})
 }
 
+func TestStyleCodeLine(t *testing.T) {
+	convey.Convey("Given styleCodeLine", t, func() {
+
+		convey.Convey("When a number is followed by identifier text", func() {
+			line := styleCodeLine("value := 42abc", &goSyntaxSpec)
+
+			convey.Convey("It should only highlight the numeric portion", func() {
+				convey.So(line, convey.ShouldContainSubstring, styleFgYellow+"42"+styleReset+"abc")
+			})
+		})
+	})
+}
+
 func TestStyleChatLineSeparatorWidth(t *testing.T) {
 	convey.Convey("Given styleChatLine with a separator", t, func() {
 
