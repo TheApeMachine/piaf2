@@ -228,8 +228,8 @@ func (kanban *Kanban) markTaskStatus(label string, status StoryStatus) bool {
 
 			for taskIndex := range story.Tasks {
 				task := &story.Tasks[taskIndex]
-				taskLabel := strings.ToLower(strings.TrimSpace(story.Title + ": " + task.Title))
-				if taskLabel == needle || strings.EqualFold("implement "+story.Title+": "+task.Title, label) {
+				taskLabel := strings.TrimSpace(story.Title + ": " + task.Title)
+				if strings.EqualFold(taskLabel, needle) || strings.EqualFold("implement "+taskLabel, needle) {
 					task.Status = status
 					return true
 				}

@@ -149,7 +149,7 @@ func (parser *KanbanParser) Parse(text string) *Kanban {
 
 func parseStatusTitle(title string) (string, StoryStatus) {
 	status := StatusTodo
-	if idx := strings.LastIndex(title, "("); idx > 0 && strings.HasSuffix(title, ")") {
+	if idx := strings.LastIndex(title, "("); idx >= 0 && strings.HasSuffix(title, ")") {
 		paren := strings.TrimSpace(strings.TrimSuffix(title[idx+1:], ")"))
 		title = strings.TrimSpace(title[:idx])
 		switch strings.ToLower(paren) {
