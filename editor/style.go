@@ -1,6 +1,9 @@
 package editor
 
-import "strings"
+import (
+	"strings"
+	"sync"
+)
 
 const (
 	styleReset     = "\033[0m"
@@ -21,19 +24,7 @@ const (
 	separatorChar = "\u2500"
 )
 
-var chatRoleStyles = []struct {
-	prefix string
-	color  string
-}{
-	{"Discussion ", styleFgBrand},
-	{"PM Summary", styleFgBrand},
-	{"Project Manager", styleFgBrand},
-	{"Architect", styleFgHighlight},
-	{"Team Lead", styleFgBrand},
-	{"Developer", styleFgGreen},
-	{"QA", styleFgYellow},
-	{"Review", styleFgHighlight},
-}
+var separatorLineCache sync.Map
 
 /*
 styleChatLines applies ANSI color codes to wrapped chat lines.
@@ -57,73 +48,134 @@ func styleChatLine(line string, width int) string {
 	}
 
 	if trimmed == "---" {
-		separatorWidth := width
-		if separatorWidth <= 0 {
-			separatorWidth = 40
+		return cachedSeparatorLine(width)
+	}
+
+	switch trimmed[0] {
+	case 'A':
+		if strings.HasPrefix(trimmed, "Assignment:") {
+			return styleFgBrand + line + styleReset
 		}
 
-		return styleFgBrand + styleDim + strings.Repeat(separatorChar, separatorWidth) + styleReset
-	}
+		if strings.HasPrefix(trimmed, "Architect") {
+			return styleRoleLabel(line, styleFgHighlight)
+		}
 
-	if strings.HasPrefix(trimmed, "You:") {
-		return styleBold + styleFgBrand + line + styleReset
-	}
+	case 'C':
+		if strings.HasPrefix(trimmed, "Channel coordination:") {
+			return styleDim + line + styleReset
+		}
 
-	if strings.HasPrefix(trimmed, "System:") {
-		return styleFgYellow + line + styleReset
-	}
+	case 'D':
+		if strings.HasPrefix(trimmed, "Discussion window") {
+			return styleDim + line + styleReset
+		}
 
-	if strings.HasPrefix(trimmed, "Pipeline:") || strings.HasPrefix(trimmed, "Team:") {
-		return styleDim + styleFgHighlight + line + styleReset
-	}
+		if strings.HasPrefix(trimmed, "Discussion ") {
+			return styleRoleLabel(line, styleFgBrand)
+		}
 
-	if strings.HasPrefix(trimmed, "Progress:") {
-		return styleFgGreen + line + styleReset
-	}
+		if strings.HasPrefix(trimmed, "Developer") {
+			return styleRoleLabel(line, styleFgGreen)
+		}
 
-	if strings.HasPrefix(trimmed, "Assignment:") {
-		return styleFgBrand + line + styleReset
-	}
+	case 'I':
+		if strings.HasPrefix(trimmed, "Implementation complete.") {
+			return styleBold + styleFgGreen + line + styleReset
+		}
 
-	if strings.HasPrefix(trimmed, "Channel coordination:") {
-		return styleDim + line + styleReset
-	}
+		if strings.HasPrefix(trimmed, "Implementation window") {
+			return styleDim + line + styleReset
+		}
 
-	if strings.HasPrefix(trimmed, "Review:") {
-		return styleBold + styleFgHighlight + line + styleReset
-	}
+	case 'P':
+		if strings.HasPrefix(trimmed, "Pipeline:") {
+			return styleDim + styleFgHighlight + line + styleReset
+		}
 
-	if strings.HasPrefix(trimmed, "Project board:") {
-		return styleBold + styleFgBrand + line + styleReset
-	}
+		if strings.HasPrefix(trimmed, "Progress:") {
+			return styleFgGreen + line + styleReset
+		}
 
-	if strings.HasPrefix(trimmed, "Implementation complete.") {
-		return styleBold + styleFgGreen + line + styleReset
-	}
+		if strings.HasPrefix(trimmed, "Project board:") {
+			return styleBold + styleFgBrand + line + styleReset
+		}
 
-	if strings.HasPrefix(trimmed, "Discussion window") ||
-		strings.HasPrefix(trimmed, "Implementation window") ||
-		strings.HasPrefix(trimmed, "Press i to") ||
-		strings.HasPrefix(trimmed, "Use prompts") ||
-		strings.HasPrefix(trimmed, "Use :accept") {
-		return styleDim + line + styleReset
-	}
+		if strings.HasPrefix(trimmed, "Press i to") {
+			return styleDim + line + styleReset
+		}
 
-	for _, role := range chatRoleStyles {
-		if strings.HasPrefix(trimmed, role.prefix) {
-			colonIdx := strings.Index(line, ":")
-			if colonIdx > 0 {
-				label := line[:colonIdx+1]
-				body := line[colonIdx+1:]
+		if strings.HasPrefix(trimmed, "PM Summary") || strings.HasPrefix(trimmed, "Project Manager") {
+			return styleRoleLabel(line, styleFgBrand)
+		}
 
-				return styleBold + role.color + label + styleReset + body
-			}
+	case 'Q':
+		if strings.HasPrefix(trimmed, "QA") {
+			return styleRoleLabel(line, styleFgYellow)
+		}
 
-			return styleBold + role.color + line + styleReset
+	case 'R':
+		if strings.HasPrefix(trimmed, "Review:") {
+			return styleBold + styleFgHighlight + line + styleReset
+		}
+
+		if strings.HasPrefix(trimmed, "Review") {
+			return styleRoleLabel(line, styleFgHighlight)
+		}
+
+	case 'S':
+		if strings.HasPrefix(trimmed, "System:") {
+			return styleFgYellow + line + styleReset
+		}
+
+	case 'T':
+		if strings.HasPrefix(trimmed, "Team:") {
+			return styleDim + styleFgHighlight + line + styleReset
+		}
+
+		if strings.HasPrefix(trimmed, "Team Lead") {
+			return styleRoleLabel(line, styleFgBrand)
+		}
+
+	case 'U':
+		if strings.HasPrefix(trimmed, "Use prompts") || strings.HasPrefix(trimmed, "Use :accept") {
+			return styleDim + line + styleReset
+		}
+
+	case 'Y':
+		if strings.HasPrefix(trimmed, "You:") {
+			return styleBold + styleFgBrand + line + styleReset
 		}
 	}
 
 	return line
+}
+
+func cachedSeparatorLine(width int) string {
+	if width <= 0 {
+		width = 40
+	}
+
+	if line, ok := separatorLineCache.Load(width); ok {
+		return line.(string)
+	}
+
+	line := styleFgBrand + styleDim + strings.Repeat(separatorChar, width) + styleReset
+	separatorLineCache.Store(width, line)
+
+	return line
+}
+
+func styleRoleLabel(line, color string) string {
+	colonIdx := strings.IndexByte(line, ':')
+	if colonIdx > 0 {
+		label := line[:colonIdx+1]
+		body := line[colonIdx+1:]
+
+		return styleBold + color + label + styleReset + body
+	}
+
+	return styleBold + color + line + styleReset
 }
 
 /*
