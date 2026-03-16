@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+
+	"github.com/theapemachine/piaf/theme"
 )
 
 const (
@@ -19,12 +21,24 @@ const (
 	styleFgCyan    = "\033[36m"
 	styleFgGray    = "\033[90m"
 
-	styleFgBrand     = "\033[38;2;108;80;255m"
-	styleFgHighlight = "\033[38;2;254;135;255m"
-	styleBgBrand     = "\033[48;2;108;80;255m"
-
 	separatorChar = "\u2500"
 )
+
+func styleFgBrand() string     { return theme.Active().FgBrand() }
+func styleFgHighlight() string { return theme.Active().FgHighlight() }
+func styleBgBrand() string     { return theme.Active().BgBrand() }
+func styleBgPopup() string     { return theme.Active().BgPopup() }
+func styleBgSelected() string  { return theme.Active().BgSelected() }
+func styleFgDim() string       { return theme.Active().FgDim() }
+func styleFgBorder() string    { return theme.Active().FgBorder() }
+func styleFgSearchBox() string { return theme.Active().FgSearchBox() }
+
+func syntaxKeyword() string { return theme.Active().SyntaxKeyword() }
+func syntaxBuiltin() string { return theme.Active().SyntaxBuiltin() }
+func syntaxString() string  { return theme.Active().SyntaxString() }
+func syntaxNumber() string  { return theme.Active().SyntaxNumber() }
+func syntaxComment() string { return theme.Active().SyntaxComment() }
+func syntaxLiteral() string { return theme.Active().SyntaxLiteral() }
 
 var separatorLineCache sync.Map
 
@@ -128,8 +142,7 @@ func styleCodeLine(line string, spec *syntaxSpec) string {
 
 	for index := 0; index < len(runes); {
 		if len(lineCommentPrefix) > 0 && hasRunesPrefix(runes[index:], lineCommentPrefix) {
-			out.WriteString(styleDim)
-			out.WriteString(styleFgGray)
+			out.WriteString(syntaxComment())
 			out.WriteString(string(runes[index:]))
 			out.WriteString(styleReset)
 			break
@@ -137,8 +150,7 @@ func styleCodeLine(line string, spec *syntaxSpec) string {
 
 		if hasRunesPrefix(runes[index:], blockCommentPrefix) {
 			end := consumeBlockCommentRunes(runes, index)
-			out.WriteString(styleDim)
-			out.WriteString(styleFgGray)
+			out.WriteString(syntaxComment())
 			out.WriteString(string(runes[index:end]))
 			out.WriteString(styleReset)
 			index = end
@@ -147,7 +159,7 @@ func styleCodeLine(line string, spec *syntaxSpec) string {
 
 		if isQuoteRune(runes[index]) {
 			end := consumeQuotedRunes(runes, index)
-			out.WriteString(styleFgGreen)
+			out.WriteString(syntaxString())
 			out.WriteString(string(runes[index:end]))
 			out.WriteString(styleReset)
 			index = end
@@ -156,7 +168,7 @@ func styleCodeLine(line string, spec *syntaxSpec) string {
 
 		if isNumberStart(runes, index) {
 			end := consumeNumberRunes(runes, index)
-			out.WriteString(styleFgYellow)
+			out.WriteString(syntaxNumber())
 			out.WriteString(string(runes[index:end]))
 			out.WriteString(styleReset)
 			index = end
@@ -170,15 +182,15 @@ func styleCodeLine(line string, spec *syntaxSpec) string {
 			switch {
 			case syntaxContains(spec.keywords, word):
 				out.WriteString(styleBold)
-				out.WriteString(styleFgMagenta)
+				out.WriteString(syntaxKeyword())
 				out.WriteString(word)
 				out.WriteString(styleReset)
 			case syntaxContains(spec.builtins, word):
-				out.WriteString(styleFgCyan)
+				out.WriteString(syntaxBuiltin())
 				out.WriteString(word)
 				out.WriteString(styleReset)
 			case syntaxContains(spec.literals, word):
-				out.WriteString(styleFgYellow)
+				out.WriteString(syntaxLiteral())
 				out.WriteString(word)
 				out.WriteString(styleReset)
 			default:
@@ -210,11 +222,11 @@ func styleChatLine(line string, width int) string {
 	switch trimmed[0] {
 	case 'A':
 		if strings.HasPrefix(trimmed, "Assignment:") {
-			return styleFgBrand + line + styleReset
+			return styleFgBrand() + line + styleReset
 		}
 
 		if strings.HasPrefix(trimmed, "Architect") {
-			return styleRoleLabel(line, styleFgHighlight)
+			return styleRoleLabel(line, styleFgHighlight())
 		}
 
 	case 'C':
@@ -228,7 +240,7 @@ func styleChatLine(line string, width int) string {
 		}
 
 		if strings.HasPrefix(trimmed, "Discussion ") {
-			return styleRoleLabel(line, styleFgBrand)
+			return styleRoleLabel(line, styleFgBrand())
 		}
 
 		if strings.HasPrefix(trimmed, "Developer") {
@@ -246,7 +258,7 @@ func styleChatLine(line string, width int) string {
 
 	case 'P':
 		if strings.HasPrefix(trimmed, "Pipeline:") {
-			return styleDim + styleFgHighlight + line + styleReset
+			return styleDim + styleFgHighlight() + line + styleReset
 		}
 
 		if strings.HasPrefix(trimmed, "Progress:") {
@@ -254,7 +266,7 @@ func styleChatLine(line string, width int) string {
 		}
 
 		if strings.HasPrefix(trimmed, "Project board:") {
-			return styleBold + styleFgBrand + line + styleReset
+			return styleBold + styleFgBrand() + line + styleReset
 		}
 
 		if strings.HasPrefix(trimmed, "Press i to") {
@@ -262,7 +274,7 @@ func styleChatLine(line string, width int) string {
 		}
 
 		if strings.HasPrefix(trimmed, "PM Summary") || strings.HasPrefix(trimmed, "Project Manager") {
-			return styleRoleLabel(line, styleFgBrand)
+			return styleRoleLabel(line, styleFgBrand())
 		}
 
 	case 'Q':
@@ -272,11 +284,11 @@ func styleChatLine(line string, width int) string {
 
 	case 'R':
 		if strings.HasPrefix(trimmed, "Review:") {
-			return styleBold + styleFgHighlight + line + styleReset
+			return styleBold + styleFgHighlight() + line + styleReset
 		}
 
 		if strings.HasPrefix(trimmed, "Review") {
-			return styleRoleLabel(line, styleFgHighlight)
+			return styleRoleLabel(line, styleFgHighlight())
 		}
 
 	case 'S':
@@ -286,11 +298,11 @@ func styleChatLine(line string, width int) string {
 
 	case 'T':
 		if strings.HasPrefix(trimmed, "Team:") {
-			return styleDim + styleFgHighlight + line + styleReset
+			return styleDim + styleFgHighlight() + line + styleReset
 		}
 
 		if strings.HasPrefix(trimmed, "Team Lead") {
-			return styleRoleLabel(line, styleFgBrand)
+			return styleRoleLabel(line, styleFgBrand())
 		}
 
 	case 'U':
@@ -300,7 +312,7 @@ func styleChatLine(line string, width int) string {
 
 	case 'Y':
 		if strings.HasPrefix(trimmed, "You:") {
-			return styleBold + styleFgBrand + line + styleReset
+			return styleBold + styleFgBrand() + line + styleReset
 		}
 	}
 
@@ -318,7 +330,7 @@ func cachedSeparatorLine(width int) string {
 		}
 	}
 
-	line := styleFgBrand + styleDim + strings.Repeat(separatorChar, width) + styleReset
+	line := styleFgBrand() + styleDim + strings.Repeat(separatorChar, width) + styleReset
 	separatorLineCache.Store(width, line)
 
 	return line
@@ -512,7 +524,7 @@ func styleExplorerLines(lines []string) []string {
 	for index, line := range lines {
 		switch {
 		case strings.HasSuffix(line, "/"):
-			styled[index] = styleBold + styleFgBrand + line + styleReset
+			styled[index] = styleBold + styleFgBrand() + line + styleReset
 		case line == "..":
 			styled[index] = styleDim + line + styleReset
 		default:
@@ -530,12 +542,6 @@ const (
 	boxBottomRight = "\u256F"
 	boxHorizontal  = "\u2500"
 	boxVertical    = "\u2502"
-
-	styleBgPopup     = "\033[48;2;18;14;38m"
-	styleBgSelected  = "\033[48;2;38;28;78m"
-	styleFgDim       = "\033[38;2;80;70;100m"
-	styleFgBorder    = "\033[38;2;60;50;120m"
-	styleFgSearchBox = "\033[38;2;200;190;230m"
 )
 
 /*
@@ -593,7 +599,7 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 
 		switch {
 		case rel == 0:
-			line.WriteString(styleFgBorder)
+			line.WriteString(styleFgBorder())
 			line.WriteString(boxTopLeft)
 			line.WriteString(strings.Repeat(boxHorizontal, innerWidth))
 			line.WriteString(boxTopRight)
@@ -601,32 +607,32 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 
 		case rel == 1:
 			query := palette.Query()
-			prompt := styleFgBrand + styleBold + " / " + styleReset + styleBgPopup + styleFgSearchBox + query
+			prompt := styleFgBrand() + styleBold + " / " + styleReset + styleBgPopup() + styleFgSearchBox() + query
 
 			pad := innerWidth - 3 - runeCount(query)
 			if pad < 0 {
 				pad = 0
 			}
 
-			line.WriteString(styleBgPopup + styleFgBorder + boxVertical + styleReset)
-			line.WriteString(styleBgPopup)
+			line.WriteString(styleBgPopup() + styleFgBorder() + boxVertical + styleReset)
+			line.WriteString(styleBgPopup())
 			line.WriteString(prompt)
 			line.WriteString(strings.Repeat(" ", pad))
 			line.WriteString(styleReset)
-			line.WriteString(styleBgPopup + styleFgBorder + boxVertical + styleReset)
+			line.WriteString(styleBgPopup() + styleFgBorder() + boxVertical + styleReset)
 
 		case rel == 2:
-			line.WriteString(styleFgBorder)
+			line.WriteString(styleFgBorder())
 			line.WriteString(boxVertical)
 			line.WriteString(styleDim)
 			line.WriteString(strings.Repeat(boxHorizontal, innerWidth))
 			line.WriteString(styleReset)
-			line.WriteString(styleFgBorder)
+			line.WriteString(styleFgBorder())
 			line.WriteString(boxVertical)
 			line.WriteString(styleReset)
 
 		case rel == popupHeight-1:
-			line.WriteString(styleFgBorder)
+			line.WriteString(styleFgBorder())
 			line.WriteString(boxBottomLeft)
 			line.WriteString(strings.Repeat(boxHorizontal, innerWidth))
 			line.WriteString(boxBottomRight)
@@ -655,29 +661,29 @@ func stylePaletteOverlay(bgLines []string, palette *Palette, width, height int) 
 
 				isSelected := resultIdx == palette.Cursor()
 
-				rowBg := styleBgPopup
+				rowBg := styleBgPopup()
 				if isSelected {
-					rowBg = styleBgSelected
+					rowBg = styleBgSelected()
 				}
 
-				fg := styleFgDim
+				fg := styleFgDim()
 				if isSelected {
-					fg = styleFgHighlight
+					fg = styleFgHighlight()
 				}
 
-				line.WriteString(rowBg + styleFgBorder + boxVertical + styleReset)
+				line.WriteString(rowBg + styleFgBorder() + boxVertical + styleReset)
 				line.WriteString(rowBg + fg)
 				line.WriteString(" ")
 				line.WriteString(text)
 				line.WriteString(strings.Repeat(" ", pad))
 				line.WriteString(styleReset)
-				line.WriteString(rowBg + styleFgBorder + boxVertical + styleReset)
+				line.WriteString(rowBg + styleFgBorder() + boxVertical + styleReset)
 			} else {
-				line.WriteString(styleBgPopup + styleFgBorder + boxVertical + styleReset)
-				line.WriteString(styleBgPopup)
+				line.WriteString(styleBgPopup() + styleFgBorder() + boxVertical + styleReset)
+				line.WriteString(styleBgPopup())
 				line.WriteString(strings.Repeat(" ", innerWidth))
 				line.WriteString(styleReset)
-				line.WriteString(styleBgPopup + styleFgBorder + boxVertical + styleReset)
+				line.WriteString(styleBgPopup() + styleFgBorder() + boxVertical + styleReset)
 			}
 		}
 
