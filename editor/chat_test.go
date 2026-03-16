@@ -262,12 +262,17 @@ func TestSanitizeBranchName(t *testing.T) {
 
 		convey.Convey("It should fall back when no safe characters remain", func() {
 			convey.So(sanitizeBranchName("!!!"), convey.ShouldEqual, "feature/feature-implementation")
+			convey.So(sanitizeBranchName(""), convey.ShouldEqual, "feature/feature-implementation")
 		})
 
 		convey.Convey("It should trim overlong names without trailing separators", func() {
 			name := sanitizeBranchName("This change adds a very long command palette implementation branch name")
 			convey.So(name, convey.ShouldEqual, "feature/this-change-adds-a-very-long-command-pal")
 			convey.So(strings.HasSuffix(name, "-"), convey.ShouldBeFalse)
+		})
+
+		convey.Convey("It should drop unsupported unicode and trim boundary separators", func() {
+			convey.So(sanitizeBranchName("  Déjà vu / feature  "), convey.ShouldEqual, "feature/d-j-vu-feature")
 		})
 	})
 }
@@ -286,7 +291,7 @@ func BenchmarkChatSubmit(b *testing.B) {
 		),
 	)
 
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		chat.mu.Lock()
 		chat.history = nil
 		chat.mu.Unlock()
@@ -295,7 +300,7 @@ func BenchmarkChatSubmit(b *testing.B) {
 }
 
 func BenchmarkSanitizeBranchName(b *testing.B) {
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		_ = sanitizeBranchName("This change adds a very long command palette implementation branch name!!!")
 	}
 }
