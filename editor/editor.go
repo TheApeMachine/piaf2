@@ -633,6 +633,8 @@ func (ed *Editor) render() {
 
 		lines = styleExplorerLines(lines)
 		cursorCol = 0
+	} else if !ed.jumpActive() {
+		lines = styleCodeLines(lines, ed.path)
 	}
 
 	if ed.inPalette && ed.palette != nil {

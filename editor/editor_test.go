@@ -3,6 +3,7 @@ package editor
 import (
 	"io"
 	"math/rand"
+	"os"
 	"strings"
 	"testing"
 
@@ -344,6 +345,43 @@ func TestEditorRead(t *testing.T) {
 			convey.Convey("It should return 0 and EOF", func() {
 				convey.So(n, convey.ShouldEqual, 0)
 				convey.So(err, convey.ShouldEqual, io.EOF)
+			})
+		})
+	})
+}
+
+func TestEditorRenderSyntaxHighlighting(t *testing.T) {
+	convey.Convey("Given an Editor opened on a Go file", t, func() {
+		file, err := os.CreateTemp("", "piaf-highlight-*.go")
+		convey.So(err, convey.ShouldBeNil)
+		defer os.Remove(file.Name())
+		_, err = file.WriteString("package main\nfunc main() {\n\treturn 42 // answer\n}\n")
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(file.Close(), convey.ShouldBeNil)
+
+		ed := NewEditor(EditorWithPath(file.Name()), EditorWithSize(80, 10))
+
+		convey.Convey("When the initial frame is rendered", func() {
+			frame := decodeFrame(ed)
+
+			convey.Convey("It should include syntax highlighting for the buffer", func() {
+				convey.So(frame, convey.ShouldNotBeNil)
+				convey.So(frame.Lines[0], convey.ShouldContainSubstring, styleBold+styleFgMagenta+"package"+styleReset)
+				convey.So(frame.Lines[2], convey.ShouldContainSubstring, styleFgYellow+"42"+styleReset)
+				convey.So(frame.Lines[2], convey.ShouldContainSubstring, styleDim+styleFgGray+"// answer"+styleReset)
+			})
+		})
+
+		convey.Convey("When jump mode is activated", func() {
+			ed = NewEditor(EditorWithPath(file.Name()), EditorWithSize(80, 10))
+			ed.Write(encodeRune('f'))
+			frame := decodeFrame(ed)
+
+			convey.Convey("It should still overlay jump labels on the visible text", func() {
+				convey.So(frame, convey.ShouldNotBeNil)
+				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "f ")
+				convey.So(frame.Lines[1], convey.ShouldContainSubstring, ansiInverse)
+				convey.So(frame.Lines[1], convey.ShouldContainSubstring, "func main() {")
 			})
 		})
 	})
