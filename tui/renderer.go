@@ -310,6 +310,8 @@ func styledModePill(mode string) string {
 		return ansiBgSubtleHigh() + ansiFgHighlight() + ansiBold + content + ansiReset
 	case "IMPLEMENT":
 		return ansiBgSubtleHigh() + ansiFgHighlight() + ansiBold + content + ansiReset
+	case "BOARD":
+		return ansiBgBrand() + ansiFgWhite + ansiBold + content + ansiReset
 	default:
 		return ansiBgSubtleBrand() + ansiFgBrand() + ansiBold + content + ansiReset
 	}
