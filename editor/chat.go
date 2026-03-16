@@ -448,7 +448,7 @@ func (chat *Chat) submitImplementation(message string) {
 	}
 
 	projectManager := order[projectManagerProviderOffset]
-	pmPrompt := "Scan the recent conversation. Extract epics and stories. Output a structured kanban using ## Epic: Title for each epic and ### Story: Title for each story. Capture risks and preserve context."
+	pmPrompt := "Scan the recent conversation and turn it into a roadmap and kanban. Output ## Epic: Title, ### Story: Title, and #### Task: Title lines. Keep tasks parallelizable when possible, preserve risks, and make the board easy for the user to follow."
 	projectRequest := chat.implementationRequest("Project Manager", message, baseToolOutput, pmPrompt, transcript, responses)
 	line, response := chat.runStage("Project Manager ["+projectManager.Name()+"]", projectManager, projectRequest)
 	transcript = append(transcript, line)
@@ -465,7 +465,7 @@ func (chat *Chat) submitImplementation(message string) {
 
 	kanbanContext := chat.formatKanbanForArchitect()
 	architect := order[architectProviderOffset]
-	architectPrompt := "Given the kanban (epics/stories), produce an implementation plan: file-level changes, dependencies, ordering, and risks. Be concise."
+	architectPrompt := "Given the roadmap and kanban (epics/stories/tasks), produce an implementation plan with file-level changes, dependencies, ordering, and a recommended number of developer lanes based on how parallelizable the tasks are. Be concise."
 	architectRequest := chat.implementationRequest("Architect", message, baseToolOutput, architectPrompt+"\n\n"+kanbanContext, transcript, responses)
 	line, architectResponse := chat.runStage("Architect ["+architect.Name()+"]", architect, architectRequest)
 	transcript = append(transcript, line)
@@ -478,7 +478,7 @@ func (chat *Chat) submitImplementation(message string) {
 	for index := 0; index < chat.workflow.DeveloperCount(); index++ {
 		roles = append(roles, fmt.Sprintf("Developer %d", index+1))
 	}
-	roles = append(roles, "QA", "Review")
+	roles = append(roles, "QA", "Review", "User Review")
 
 	chat.appendHistory("Team: " + strings.Join(roles, " -> "))
 
@@ -490,11 +490,12 @@ func (chat *Chat) submitImplementation(message string) {
 		developerCount = 1
 	}
 
-	assignments := []string{fmt.Sprintf("Deploy %d developer(s).", developerCount)}
+	assignments := []string{fmt.Sprintf("Architect staffing: Deploy %d developer(s) based on parallelizable tasks.", developerCount)}
 	for index, task := range developerTasks {
 		assignments = append(assignments, chat.workflow.AssignDeveloper(index+1, task))
 	}
 	chat.appendHistory(assignments...)
+	chat.appendHistory(chat.workflow.ReportProgress("Architect", fmt.Sprintf("recommended %d parallel developer lane(s)", developerCount)))
 
 	leadRequest := chat.implementationRequest("Team Lead", message, baseToolOutput, "Oversee the team, explain the staffing decision, and coordinate the developer assignments.\n"+strings.Join(assignments, "\n"), transcript, responses)
 	line, response = chat.runStage("Team Lead ["+teamLead.Name()+"]", teamLead, leadRequest)
@@ -514,6 +515,15 @@ func (chat *Chat) submitImplementation(message string) {
 	resultsCh := make(chan devResult, developerCount)
 
 	for index, task := range developerTasks {
+		chat.workflow.MarkDeveloperTaskInProgress(task)
+		if queue := chat.workflow.Queue(); queue != nil {
+			queue.Publish(team.QueueMessage{
+				Kind:  team.TaskClaim,
+				Agent: fmt.Sprintf("Developer %d", index+1),
+				Task:  task,
+			})
+		}
+
 		for _, channel := range chat.workflow.AnnounceIntent(index+1, task) {
 			chat.appendHistory(channel)
 		}
@@ -537,6 +547,13 @@ func (chat *Chat) submitImplementation(message string) {
 	var devLines []string
 	var devResponses []string
 	for res := range resultsCh {
+		if queue := chat.workflow.Queue(); queue != nil {
+			queue.Publish(team.QueueMessage{
+				Kind:  team.TaskComplete,
+				Agent: fmt.Sprintf("Developer %d", res.index+1),
+				Task:  res.task,
+			})
+		}
 		chat.memory.RememberAgent(fmt.Sprintf("Developer %d", res.index+1), res.response)
 		chat.memory.RememberShared(res.response)
 		chat.appendHistory(chat.workflow.ReportProgress(fmt.Sprintf("Developer %d", res.index+1), "reported implementation progress to the chat"))
@@ -598,6 +615,9 @@ func (chat *Chat) submitImplementation(message string) {
 	chat.workflow.SetQAReport(response)
 
 	chat.appendHistory(chat.workflow.SetReview(decision))
+	if decision == "PASS" {
+		chat.appendHistory(chat.workflow.GoalAchieved())
+	}
 
 	reviewProvider := order[providerIndex(developerCount, reviewProviderOffset, len(order))]
 	reviewRequest := chat.implementationRequest("Review", message, baseToolOutput, "Summarize the project board, communication channel status, memory, and review outcome. End with `Accept with :accept or :reject.`", transcript, responses)
@@ -642,6 +662,9 @@ func (chat *Chat) formatKanbanForArchitect() string {
 		lines = append(lines, "## Epic: "+epic.Title)
 		for _, story := range epic.Stories {
 			lines = append(lines, "### Story: "+story.Title)
+			for _, task := range story.Tasks {
+				lines = append(lines, "#### Task: "+task.Title)
+			}
 		}
 	}
 	return strings.Join(lines, "\n")

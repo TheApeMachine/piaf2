@@ -11,6 +11,8 @@ func TestKanbanParserParse(t *testing.T) {
 		parser := NewKanbanParser()
 		text := `## Epic: Authentication
 ### Story: Login
+#### Task: Build login form
+#### Task: Add session flow (Review)
 ### Story: Logout (InProgress)
 ## Epic: API
 ### Story: Add endpoint
@@ -23,6 +25,9 @@ func TestKanbanParserParse(t *testing.T) {
 			convey.So(kanban.Epics[0].Title, convey.ShouldEqual, "Authentication")
 			convey.So(len(kanban.Epics[0].Stories), convey.ShouldEqual, 2)
 			convey.So(kanban.Epics[0].Stories[0].Title, convey.ShouldEqual, "Login")
+			convey.So(len(kanban.Epics[0].Stories[0].Tasks), convey.ShouldEqual, 2)
+			convey.So(kanban.Epics[0].Stories[0].Tasks[0].Title, convey.ShouldEqual, "Build login form")
+			convey.So(kanban.Epics[0].Stories[0].Tasks[1].Status, convey.ShouldEqual, StatusReview)
 			convey.So(kanban.Epics[0].Stories[1].Status, convey.ShouldEqual, StatusInProgress)
 			convey.So(kanban.Epics[1].Title, convey.ShouldEqual, "API")
 			convey.So(len(kanban.Epics[1].Stories), convey.ShouldEqual, 1)
@@ -44,6 +49,7 @@ func BenchmarkKanbanParserParse(b *testing.B) {
 	parser := NewKanbanParser()
 	text := `## Epic: Auth
 ### Story: Login
+#### Task: Build login form
 ### Story: Logout
 ## Epic: API
 ### Story: Endpoint
