@@ -157,7 +157,9 @@ func cachedSeparatorLine(width int) string {
 	}
 
 	if line, ok := separatorLineCache.Load(width); ok {
-		return line.(string)
+		if cachedLine, ok := line.(string); ok {
+			return cachedLine
+		}
 	}
 
 	line := styleFgBrand + styleDim + strings.Repeat(separatorChar, width) + styleReset
@@ -166,16 +168,16 @@ func cachedSeparatorLine(width int) string {
 	return line
 }
 
-func styleRoleLabel(line, color string) string {
+func styleRoleLabel(line, styleCode string) string {
 	colonIdx := strings.IndexByte(line, ':')
 	if colonIdx > 0 {
 		label := line[:colonIdx+1]
 		body := line[colonIdx+1:]
 
-		return styleBold + color + label + styleReset + body
+		return styleBold + styleCode + label + styleReset + body
 	}
 
-	return styleBold + color + line + styleReset
+	return styleBold + styleCode + line + styleReset
 }
 
 /*
