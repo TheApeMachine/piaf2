@@ -595,7 +595,7 @@ func (ed *Editor) handleColorPickerKey(key event.Key) {
 	case event.KeyEsc, event.KeyEnter:
 		ed.inColorPicker = false
 		ed.colorPicker = nil
-		separatorLineCache.Store(0, nil)
+		separatorLineCache = sync.Map{}
 	case event.KeyUp:
 		ed.colorPicker.MoveUp()
 	case event.KeyDown:

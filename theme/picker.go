@@ -2,6 +2,7 @@ package theme
 
 import (
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -202,7 +203,7 @@ func (picker *Picker) colorPtr() *Color {
 Read implements the io.Reader interface.
 */
 func (picker *Picker) Read(p []byte) (n int, err error) {
-	return 0, fmt.Errorf("picker read not used directly")
+	return 0, io.EOF
 }
 
 /*
@@ -375,40 +376,12 @@ func (picker *Picker) Overlay(bgLines []string, width, height int) []string {
 }
 
 func (picker *Picker) roleColor(role ColorRole) Color {
-	switch role {
-	case RoleUIBrand:
-		return picker.theme.UI.Brand
-	case RoleUIHighlight:
-		return picker.theme.UI.Highlight
-	case RoleUIBgPopup:
-		return picker.theme.UI.BgPopup
-	case RoleUIBgSelected:
-		return picker.theme.UI.BgSelected
-	case RoleUIBgSubtleBrand:
-		return picker.theme.UI.BgSubtleBrand
-	case RoleUIBgSubtleHigh:
-		return picker.theme.UI.BgSubtleHigh
-	case RoleUIFgDim:
-		return picker.theme.UI.FgDim
-	case RoleUIFgBorder:
-		return picker.theme.UI.FgBorder
-	case RoleUIFgSearchBox:
-		return picker.theme.UI.FgSearchBox
-	case RoleSyntaxKeyword:
-		return picker.theme.Syntax.Keyword
-	case RoleSyntaxBuiltin:
-		return picker.theme.Syntax.Builtin
-	case RoleSyntaxString:
-		return picker.theme.Syntax.String
-	case RoleSyntaxNumber:
-		return picker.theme.Syntax.Number
-	case RoleSyntaxComment:
-		return picker.theme.Syntax.Comment
-	case RoleSyntaxLiteral:
-		return picker.theme.Syntax.Literal
-	default:
-		return Color{}
-	}
+	saved := picker.cursor
+	picker.cursor = int(role)
+	color := *picker.colorPtr()
+	picker.cursor = saved
+
+	return color
 }
 
 func clampAdd(val uint8, step int) uint8 {

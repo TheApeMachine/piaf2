@@ -298,9 +298,7 @@ func (theme *Theme) Rename(newName string) error {
 		return err
 	}
 
-	os.Remove(oldPath)
-
-	return nil
+	return os.Remove(oldPath)
 }
 
 /*
