@@ -4,6 +4,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -37,6 +38,16 @@ func decodeFrame(ed *Editor) *wire.Frame {
 	}
 
 	return frame
+}
+
+func jumpTargetCodeForWord(ed *Editor, word string) string {
+	for _, target := range ed.jumpTargets {
+		if target.word == word {
+			return target.code
+		}
+	}
+
+	return ""
 }
 
 func TestNewEditor(t *testing.T) {
@@ -166,95 +177,82 @@ func TestEditorNormalModeMotions(t *testing.T) {
 }
 
 func TestEditorJumpMode(t *testing.T) {
-	convey.Convey("Given an Editor with visible content", t, func() {
-		ed := NewEditor(EditorWithSize(80, 8))
-		ed.Write(encodeRune('i'))
-		for _, r := range "alpha beta" {
-			ed.Write(encodeRune(r))
+	convey.Convey("Given an Editor with visible code words in a workspace", t, func() {
+		tempDir := t.TempDir()
+		visibleWords := make([]string, 0, len(jumpAlphabet)+3)
+
+		visibleWords = append(visibleWords, "alpha")
+
+		for index := 0; index < len(jumpAlphabet)+2; index++ {
+			visibleWords = append(visibleWords, "word"+string(rune('a'+index/10))+string(rune('a'+index%10)))
 		}
-		ed.Write(encodeSpecial(event.KeyEnter))
-		for _, r := range "gamma delta" {
-			ed.Write(encodeRune(r))
-		}
-		ed.Write(encodeSpecial(event.KeyEsc))
+
+		mainPath := filepath.Join(tempDir, "main.go")
+		freqPath := filepath.Join(tempDir, "freq.go")
+
+		os.WriteFile(mainPath, []byte(strings.Join(visibleWords, " ")), 0o644)
+		os.WriteFile(freqPath, []byte(strings.Repeat("alpha ", 200)+strings.Repeat("wordaa ", 5)), 0o644)
+
+		ed := NewEditor(EditorWithSize(400, 4), EditorWithPath(mainPath))
 		ed.buffer.cursorRow = 0
 		ed.buffer.cursorCol = 0
 
 		convey.Convey("When 'f' is pressed", func() {
 			ed.Write(encodeRune('f'))
 			frame := decodeFrame(ed)
+			alphaCode := jumpTargetCodeForWord(ed, "alpha")
+			lastWord := visibleWords[len(visibleWords)-1]
+			lastCode := jumpTargetCodeForWord(ed, lastWord)
 
-			convey.Convey("It should prompt for a target character before showing labels", func() {
+			convey.Convey("It should label visible word starts and rank frequent words first", func() {
 				convey.So(frame, convey.ShouldNotBeNil)
-				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "target")
-				convey.So(frame.Lines[0], convey.ShouldNotContainSubstring, ansiInverse)
-				convey.So(frame.Lines[1], convey.ShouldNotContainSubstring, ansiInverse)
+				convey.So(ed.jumpActive(), convey.ShouldBeTrue)
+				convey.So(len(ed.jumpTargets), convey.ShouldEqual, len(visibleWords))
+				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "word")
+				convey.So(frame.Lines[0], convey.ShouldContainSubstring, ansiInverse)
+				convey.So(alphaCode, convey.ShouldNotBeBlank)
+				convey.So(lastCode, convey.ShouldNotBeBlank)
+				convey.So(len(alphaCode), convey.ShouldEqual, 1)
+				convey.So(len(lastCode), convey.ShouldBeGreaterThan, len(alphaCode))
 			})
 		})
 
-		convey.Convey("When 'f' then a unique target character are pressed", func() {
+		convey.Convey("When 'f' then the most common word code are pressed", func() {
 			ed.Write(encodeRune('f'))
-			ed.Write(encodeRune('b'))
+			for _, r := range jumpTargetCodeForWord(ed, "alpha") {
+				ed.Write(encodeRune(r))
+			}
 
-			convey.Convey("It should jump directly and exit jump mode", func() {
+			convey.Convey("It should jump to that word start and exit jump mode", func() {
 				convey.So(ed.buffer.cursorRow, convey.ShouldEqual, 0)
-				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, 6)
-				convey.So(ed.jumpNeedle, convey.ShouldEqual, rune(0))
+				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, 0)
 				convey.So(ed.jumpActive(), convey.ShouldBeFalse)
 			})
 		})
 
-		convey.Convey("When 'f' then a repeated target character are pressed", func() {
+		convey.Convey("When 'f' then a less common word code are pressed", func() {
+			targetWord := visibleWords[len(visibleWords)-1]
+			targetCol := strings.Index(strings.Join(visibleWords, " "), targetWord)
 			ed.Write(encodeRune('f'))
-			ed.Write(encodeRune('a'))
 			frame := decodeFrame(ed)
 
-			convey.Convey("It should narrow the overlay to matching locations", func() {
+			for _, r := range jumpTargetCodeForWord(ed, targetWord)[:1] {
+				ed.Write(encodeRune(r))
+			}
+
+			refined := decodeFrame(ed)
+
+			for _, r := range jumpTargetCodeForWord(ed, targetWord)[1:] {
+				ed.Write(encodeRune(r))
+			}
+
+			convey.Convey("It should refine the overlay before jumping to the target word", func() {
 				convey.So(frame, convey.ShouldNotBeNil)
-				convey.So(ed.jumpActive(), convey.ShouldBeTrue)
-				convey.So(ed.jumpNeedle, convey.ShouldEqual, 'a')
-				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "f ")
-				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "a")
-				convey.So(frame.Lines[0], convey.ShouldContainSubstring, ansiInverse)
-				convey.So(frame.Lines[1], convey.ShouldContainSubstring, ansiInverse)
-			})
-		})
-	})
-
-	convey.Convey("Given an Editor with more matching jump targets than the alphabet", t, func() {
-		ed := NewEditor(EditorWithSize(80, 6))
-		ed.Write(encodeRune('i'))
-		repeatedTargets := strings.TrimSpace(strings.Repeat("a ", len(jumpAlphabet)+3))
-		for _, r := range repeatedTargets {
-			ed.Write(encodeRune(r))
-		}
-		ed.Write(encodeSpecial(event.KeyEsc))
-
-		convey.Convey("When 'f' then a repeated target and the first jump prefix are pressed", func() {
-			ed.Write(encodeRune('f'))
-			ed.Write(encodeRune('a'))
-			frame := decodeFrame(ed)
-			ed.Write(encodeRune('a'))
-
-			convey.Convey("It should stay in jump mode and refine the overlay", func() {
-				convey.So(frame, convey.ShouldNotBeNil)
-				convey.So(ed.jumpActive(), convey.ShouldBeTrue)
-				convey.So(ed.jumpCodeLen, convey.ShouldEqual, 2)
-				convey.So(frame.CommandLine, convey.ShouldContainSubstring, "f ")
-				convey.So(frame.Lines[0], convey.ShouldContainSubstring, ansiInverse)
-			})
-		})
-
-		convey.Convey("When 'f' then a repeated target and a complete jump code are pressed", func() {
-			ed.Write(encodeRune('f'))
-			ed.Write(encodeRune('a'))
-			ed.Write(encodeRune('a'))
-			ed.Write(encodeRune('d'))
-
-			convey.Convey("It should jump once the code is complete", func() {
+				convey.So(refined, convey.ShouldNotBeNil)
 				convey.So(ed.buffer.cursorRow, convey.ShouldEqual, 0)
-				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, 4)
+				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, targetCol)
 				convey.So(ed.jumpActive(), convey.ShouldBeFalse)
+				convey.So(refined.CommandLine, convey.ShouldContainSubstring, "f ")
 			})
 		})
 	})

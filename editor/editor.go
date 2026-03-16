@@ -1,9 +1,12 @@
 package editor
 
 import (
+	"bytes"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -19,7 +22,7 @@ const (
 )
 
 const jumpAlphabet = "asdfghjklqwertyuiopzxcvbnm"
-const jumpPromptTarget = "target"
+const jumpPromptTarget = "word"
 
 var jumpAlphabetLookup = newJumpAlphabetLookup()
 
@@ -45,6 +48,8 @@ type Editor struct {
 	jumpPrefix    string
 	jumpTargets   []jumpTarget
 	jumpCodeLen   int
+	jumpWordFreqs map[string]int
+	jumpWordRoot  string
 	output        []byte
 	readOff       int
 	streamUpdates chan struct{}
@@ -645,11 +650,10 @@ func (ed *Editor) render() {
 		cursorCol = 0
 		cmdLine = ""
 	} else if ed.jumpActive() {
-		if ed.jumpNeedle == 0 {
-			cmdLine = styleBold + styleFgHighlight + "f " + styleReset + jumpPromptTarget
-		} else {
-			lines = ed.jumpLines(lines)
-			cmdLine = styleBold + styleFgHighlight + "f " + styleReset + string(ed.jumpNeedle) + ed.jumpPrefix
+		lines = ed.jumpLines(lines)
+		cmdLine = styleBold + styleFgHighlight + "f " + styleReset + jumpPromptTarget
+		if ed.jumpPrefix != "" {
+			cmdLine += " " + ed.jumpPrefix
 		}
 	} else if ed.mode == modeCommand {
 		cmdLine = styleBold + styleFgBrand + ": " + styleReset + string(ed.commandLine)
@@ -777,6 +781,7 @@ type jumpTarget struct {
 	row  int
 	col  int
 	code string
+	word string
 }
 
 /*
@@ -798,13 +803,34 @@ func (ed *Editor) clearJump() {
 
 /*
 startJump initiates jump mode by discovering visible targets.
-The next rune selects which character to jump toward before labels are assigned.
 */
 func (ed *Editor) startJump() {
 	targets := ed.visibleJumpTargets()
 
 	if len(targets) == 0 {
 		return
+	}
+
+	frequencies := ed.jumpWordFrequencies()
+	sort.SliceStable(targets, func(left, right int) bool {
+		leftFrequency := jumpWordFrequency(targets[left].word, frequencies)
+		rightFrequency := jumpWordFrequency(targets[right].word, frequencies)
+
+		if leftFrequency != rightFrequency {
+			return leftFrequency > rightFrequency
+		}
+
+		if targets[left].row != targets[right].row {
+			return targets[left].row < targets[right].row
+		}
+
+		return targets[left].col < targets[right].col
+	})
+
+	codes := jumpCodes(targets, frequencies)
+
+	for index := range targets {
+		targets[index].code = codes[index]
 	}
 
 	ed.jumpNeedle = 0
@@ -815,17 +841,11 @@ func (ed *Editor) startJump() {
 
 /*
 handleJumpRune processes a rune during jump mode.
-It first narrows jump targets to a chosen character, then consumes label runes.
+It consumes label runes until a word jump target is uniquely identified.
 */
 func (ed *Editor) handleJumpRune(r rune) bool {
 	if !ed.jumpActive() {
 		return false
-	}
-
-	if ed.jumpNeedle == 0 {
-		ed.selectJumpTargets(r)
-
-		return true
 	}
 
 	r = unicode.ToLower(r)
@@ -837,60 +857,21 @@ func (ed *Editor) handleJumpRune(r rune) bool {
 	}
 
 	ed.jumpPrefix += string(r)
-
-	if len(ed.jumpPrefix) < ed.jumpCodeLen {
-		if len(ed.filteredJumpTargets()) == 0 {
-			ed.clearJump()
-		}
-
-		return true
-	}
-
-	for _, target := range ed.jumpTargets {
-		if target.code == ed.jumpPrefix {
-			ed.buffer.cursorRow = target.row
-			ed.buffer.cursorCol = target.col
-			break
-		}
-	}
-
-	ed.clearJump()
-
-	return true
-}
-
-/*
-selectJumpTargets narrows visible jump targets to the requested character.
-It jumps immediately when the character is unique on screen.
-*/
-func (ed *Editor) selectJumpTargets(r rune) {
-	needle := unicode.ToLower(r)
-	targets := ed.jumpTargetsForNeedle(needle)
+	targets := ed.filteredJumpTargets()
 
 	if len(targets) == 0 {
 		ed.clearJump()
 
-		return
+		return true
 	}
 
-	if len(targets) == 1 {
+	if len(targets) == 1 && targets[0].code == ed.jumpPrefix {
 		ed.buffer.cursorRow = targets[0].row
 		ed.buffer.cursorCol = targets[0].col
 		ed.clearJump()
-
-		return
 	}
 
-	codeLen := jumpCodeLength(len(targets))
-
-	for index := range targets {
-		targets[index].code = jumpCode(index, codeLen)
-	}
-
-	ed.jumpNeedle = needle
-	ed.jumpPrefix = ""
-	ed.jumpTargets = targets
-	ed.jumpCodeLen = codeLen
+	return true
 }
 
 /*
@@ -913,36 +894,26 @@ func (ed *Editor) visibleJumpTargets() []jumpTarget {
 			continue
 		}
 
-		targets = append(targets, jumpTarget{row: row, col: 0})
-
 		for col, r := range line {
-			if col == 0 || unicode.IsSpace(r) {
+			if !isJumpWordRune(r) {
 				continue
 			}
 
-			targets = append(targets, jumpTarget{row: row, col: col})
-		}
-	}
+			if col > 0 && isJumpWordRune(line[col-1]) {
+				continue
+			}
 
-	return targets
-}
+			wordEnd := col + 1
 
-/*
-jumpTargetsForNeedle returns visible jump targets whose rune matches needle.
-Matching is case-insensitive so target selection stays lightweight.
-*/
-func (ed *Editor) jumpTargetsForNeedle(needle rune) []jumpTarget {
-	targets := make([]jumpTarget, 0, len(ed.jumpTargets))
+			for wordEnd < len(line) && isJumpWordRune(line[wordEnd]) {
+				wordEnd++
+			}
 
-	for _, target := range ed.jumpTargets {
-		line := ed.buffer.lines[target.row]
-
-		if target.col >= len(line) {
-			continue
-		}
-
-		if unicode.ToLower(line[target.col]) == needle {
-			targets = append(targets, target)
+			targets = append(targets, jumpTarget{
+				row:  row,
+				col:  col,
+				word: strings.ToLower(string(line[col:wordEnd])),
+			})
 		}
 	}
 
@@ -1007,33 +978,110 @@ func (ed *Editor) jumpLines(lines []string) []string {
 	return overlaidLines
 }
 
-/*
-jumpCodeLength calculates the minimum label length needed to encode count targets.
-*/
-func jumpCodeLength(count int) int {
-	codeLen := 1
-	capacity := len(jumpAlphabet)
-
-	for count > capacity {
-		codeLen++
-		capacity *= len(jumpAlphabet)
-	}
-
-	return codeLen
+type jumpCodeNode struct {
+	index    int
+	weight   int
+	order    int
+	children []*jumpCodeNode
 }
 
-/*
-jumpCode generates a base-N label for the given index with the specified length.
-*/
-func jumpCode(index, codeLen int) string {
-	code := make([]byte, codeLen)
-
-	for position := codeLen - 1; position >= 0; position-- {
-		code[position] = jumpAlphabet[index%len(jumpAlphabet)]
-		index /= len(jumpAlphabet)
+func jumpCodes(targets []jumpTarget, frequencies map[string]int) []string {
+	if len(targets) == 0 {
+		return nil
 	}
 
-	return string(code)
+	if len(targets) == 1 {
+		return []string{string(jumpAlphabet[0])}
+	}
+
+	nodes := make([]*jumpCodeNode, 0, len(targets)+len(jumpAlphabet))
+
+	for index, target := range targets {
+		nodes = append(nodes, &jumpCodeNode{
+			index:  index,
+			weight: jumpWordFrequency(target.word, frequencies),
+			order:  index,
+		})
+	}
+
+	padding := (len(jumpAlphabet) - 1 - (len(nodes)-1)%(len(jumpAlphabet)-1)) % (len(jumpAlphabet) - 1)
+	order := len(nodes)
+
+	for range padding {
+		nodes = append(nodes, &jumpCodeNode{index: -1, order: order})
+		order++
+	}
+
+	for len(nodes) > 1 {
+		sort.Slice(nodes, func(left, right int) bool {
+			if nodes[left].weight != nodes[right].weight {
+				return nodes[left].weight < nodes[right].weight
+			}
+
+			return nodes[left].order > nodes[right].order
+		})
+
+		children := append([]*jumpCodeNode(nil), nodes[:len(jumpAlphabet)]...)
+		parent := &jumpCodeNode{index: -1, order: order, children: children}
+
+		for _, child := range children {
+			parent.weight += child.weight
+		}
+
+		order++
+		nodes = append(nodes[len(jumpAlphabet):], parent)
+	}
+
+	codes := make([]string, len(targets))
+	assignJumpCodes(nodes[0], "", codes)
+
+	return codes
+}
+
+func assignJumpCodes(node *jumpCodeNode, prefix string, codes []string) {
+	if node == nil {
+		return
+	}
+
+	if len(node.children) == 0 {
+		if node.index >= 0 {
+			if prefix == "" {
+				prefix = string(jumpAlphabet[0])
+			}
+
+			codes[node.index] = prefix
+		}
+
+		return
+	}
+
+	sort.SliceStable(node.children, func(left, right int) bool {
+		if node.children[left].weight != node.children[right].weight {
+			return node.children[left].weight > node.children[right].weight
+		}
+
+		return node.children[left].order < node.children[right].order
+	})
+
+	for index, child := range node.children {
+		assignJumpCodes(child, prefix+string(jumpAlphabet[index]), codes)
+	}
+}
+
+func jumpWordFrequency(word string, frequencies map[string]int) int {
+	if frequencies == nil {
+		return 1
+	}
+
+	if frequency := frequencies[word]; frequency > 0 {
+		return frequency
+	}
+
+	return 1
+}
+
+func isJumpWordRune(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
 func newJumpAlphabetLookup() [256]bool {
@@ -1044,6 +1092,70 @@ func newJumpAlphabetLookup() [256]bool {
 	}
 
 	return lookup
+}
+
+func (ed *Editor) jumpWordFrequencies() map[string]int {
+	root := ed.workspaceRoot()
+
+	if ed.jumpWordFreqs != nil && ed.jumpWordRoot == root {
+		return ed.jumpWordFreqs
+	}
+
+	frequencies := map[string]int{}
+
+	filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		if entry.IsDir() {
+			name := entry.Name()
+
+			if strings.HasPrefix(name, ".") && path != root {
+				return filepath.SkipDir
+			}
+
+			return nil
+		}
+
+		data, readErr := os.ReadFile(path)
+		if readErr != nil || bytes.IndexByte(data, 0) >= 0 {
+			return nil
+		}
+
+		countJumpWords(data, frequencies)
+
+		return nil
+	})
+
+	ed.jumpWordFreqs = frequencies
+	ed.jumpWordRoot = root
+
+	return ed.jumpWordFreqs
+}
+
+func countJumpWords(data []byte, frequencies map[string]int) {
+	runes := []rune(string(data))
+	start := -1
+
+	for index, r := range runes {
+		if isJumpWordRune(r) {
+			if start == -1 {
+				start = index
+			}
+
+			continue
+		}
+
+		if start >= 0 {
+			frequencies[strings.ToLower(string(runes[start:index]))]++
+			start = -1
+		}
+	}
+
+	if start >= 0 {
+		frequencies[strings.ToLower(string(runes[start:]))]++
+	}
 }
 
 func (ed *Editor) onStreamUpdate() {
