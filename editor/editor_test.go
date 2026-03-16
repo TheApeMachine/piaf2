@@ -162,6 +162,24 @@ func TestEditorNormalModeMotions(t *testing.T) {
 				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, len(ed.buffer.lines[0]))
 			})
 		})
+
+		convey.Convey("When space is pressed", func() {
+			ed.Write(encodeRune(' '))
+
+			convey.Convey("It should move cursor right immediately", func() {
+				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, 1)
+			})
+		})
+
+		convey.Convey("When space is pressed multiple times", func() {
+			ed.Write(encodeRune(' '))
+			ed.Write(encodeRune(' '))
+			ed.Write(encodeRune(' '))
+
+			convey.Convey("It should advance cursor by three", func() {
+				convey.So(ed.buffer.cursorCol, convey.ShouldEqual, 3)
+			})
+		})
 	})
 }
 
@@ -642,5 +660,21 @@ func BenchmarkEditorRead(b *testing.B) {
 	for b.Loop() {
 		ed.readOff = 0
 		_, _ = ed.Read(buf)
+	}
+}
+
+func BenchmarkEditorNormalSpace(b *testing.B) {
+	ed := NewEditor()
+	ed.Write(encodeRune('i'))
+	for _, r := range "abcdefghijklmnop" {
+		ed.Write(encodeRune(r))
+	}
+	ed.Write(encodeSpecial(event.KeyEsc))
+	space := encodeRune(' ')
+
+	for b.Loop() {
+		ed.buffer.cursorCol = 0
+		ed.mode = modeNormal
+		ed.Write(space)
 	}
 }
