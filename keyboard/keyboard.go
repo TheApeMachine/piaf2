@@ -27,12 +27,13 @@ type Keyboard struct {
 }
 
 /*
-keyboardOpts configures Keyboard.
+keyboardOpts is a functional option for configuring Keyboard at construction.
 */
 type keyboardOpts func(*Keyboard)
 
 /*
-NewKeyboard creates a new Keyboard.
+NewKeyboard constructs a Keyboard that parses raw terminal bytes into event wire format.
+Applies any given options before returning.
 */
 func NewKeyboard(opts ...keyboardOpts) *Keyboard {
 	keyboard := &Keyboard{}
@@ -78,11 +79,16 @@ func (keyboard *Keyboard) Write(p []byte) (n int, err error) {
 
 /*
 Close implements the io.Closer interface.
+Keyboard has no resources to release.
 */
 func (keyboard *Keyboard) Close() error {
 	return nil
 }
 
+/*
+processByte advances the parser state machine by one byte.
+Dispatches to the handler for the current state; treats 0xFE as a refresh signal.
+*/
 func (keyboard *Keyboard) processByte(b byte) {
 	if b == 0xFE {
 		keyboard.output = event.EncodeSpecial(keyboard.output, event.KeyRefresh)
@@ -101,6 +107,10 @@ func (keyboard *Keyboard) processByte(b byte) {
 	}
 }
 
+/*
+handleNormal processes input when not in an escape sequence.
+Starts sequences on Escape, encodes printable runes and Tab, and maps Backspace, Enter, and Ctrl+C to their event codes.
+*/
 func (keyboard *Keyboard) handleNormal(b byte) {
 	if b == 0x1b {
 		keyboard.state = stateEscape
@@ -127,6 +137,10 @@ func (keyboard *Keyboard) handleNormal(b byte) {
 	}
 }
 
+/*
+handleEscape processes the byte following Escape.
+Transitions to CSI state for '[', or emits KeyEsc and returns to normal for standalone Escape or other introducers.
+*/
 func (keyboard *Keyboard) handleEscape(b byte) {
 	if b == '[' {
 		keyboard.state = stateCSI
@@ -137,6 +151,10 @@ func (keyboard *Keyboard) handleEscape(b byte) {
 	keyboard.state = stateNormal
 }
 
+/*
+handleCSI processes the byte after the CSI introducer.
+Either accumulates parameter digits and transitions to CSIParam, or decodes arrow keys (A/B/C/D) directly.
+*/
 func (keyboard *Keyboard) handleCSI(b byte) {
 	if b >= 0x30 && b <= 0x3f {
 		keyboard.csiParam = append(keyboard.csiParam[:0], b)
@@ -158,6 +176,10 @@ func (keyboard *Keyboard) handleCSI(b byte) {
 	}
 }
 
+/*
+handleCSIParam continues accumulating CSI parameter digits.
+On the final byte, decodes arrow keys and Delete (CSI 3~), emits events, and returns to normal.
+*/
 func (keyboard *Keyboard) handleCSIParam(b byte) {
 	if b >= 0x30 && b <= 0x3f {
 		keyboard.csiParam = append(keyboard.csiParam, b)

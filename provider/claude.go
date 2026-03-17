@@ -167,12 +167,18 @@ func (provider *ClaudeProvider) GenerateStream(
 	}
 }
 
+/*
+buildParams creates MessageNewParams for a fresh user prompt.
+*/
 func (provider *ClaudeProvider) buildParams(request *Request) anthropic.MessageNewParams {
 	return provider.buildParamsWithMessages(request, []anthropic.MessageParam{
 		anthropic.NewUserMessage(anthropic.NewTextBlock(BuildUserPrompt(request))),
 	})
 }
 
+/*
+buildParamsWithMessages builds API params with system prompt, tools, and the given message history.
+*/
 func (provider *ClaudeProvider) buildParamsWithMessages(request *Request, messages []anthropic.MessageParam) anthropic.MessageNewParams {
 	system := BuildSystemPrompt(request)
 	params := anthropic.MessageNewParams{
@@ -189,6 +195,9 @@ func (provider *ClaudeProvider) buildParamsWithMessages(request *Request, messag
 	return params
 }
 
+/*
+buildTools converts ToolDefinitions into Anthropic ToolUnionParam format.
+*/
 func (provider *ClaudeProvider) buildTools(tools []ToolDefinition) []anthropic.ToolUnionParam {
 	out := make([]anthropic.ToolUnionParam, 0, len(tools))
 	for _, tool := range tools {
@@ -214,6 +223,9 @@ func (provider *ClaudeProvider) buildTools(tools []ToolDefinition) []anthropic.T
 	return out
 }
 
+/*
+collectToolCalls finds ToolUseBlock entries, runs each through the executor, and returns ToolResultBlock params.
+*/
 func (provider *ClaudeProvider) collectToolCalls(content []anthropic.ContentBlockUnion, executor func(string, map[string]any) (string, error), onChunk func(string)) ([]anthropic.ContentBlockParamUnion, bool) {
 	var results []anthropic.ContentBlockParamUnion
 	for _, block := range content {
@@ -237,6 +249,9 @@ func (provider *ClaudeProvider) collectToolCalls(content []anthropic.ContentBloc
 	return results, len(results) > 0
 }
 
+/*
+extractText concatenates TextBlock content from the response into a single string.
+*/
 func (provider *ClaudeProvider) extractText(content []anthropic.ContentBlockUnion) string {
 	var parts []string
 	for _, block := range content {
@@ -250,6 +265,9 @@ func (provider *ClaudeProvider) extractText(content []anthropic.ContentBlockUnio
 	return strings.Join(parts, "\n")
 }
 
+/*
+wrapErr annotates Anthropic API errors with the provider name and parsed message.
+*/
 func (provider *ClaudeProvider) wrapErr(err error) error {
 	var apierr *anthropic.Error
 	if errors.As(err, &apierr) {

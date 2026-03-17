@@ -176,6 +176,7 @@ func (frame *Frame) Write(p []byte) (n int, err error) {
 
 /*
 Close implements the io.Closer interface.
+Frame has no resources to release.
 */
 func (frame *Frame) Close() error {
 	return nil

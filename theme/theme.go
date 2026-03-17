@@ -304,21 +304,84 @@ func (theme *Theme) Rename(newName string) error {
 /*
 FgBrand returns the ANSI foreground escape for the brand color.
 */
-func (theme *Theme) FgBrand() string       { return theme.UI.Brand.Fg() }
-func (theme *Theme) FgHighlight() string   { return theme.UI.Highlight.Fg() }
-func (theme *Theme) BgBrand() string       { return theme.UI.Brand.Bg() }
-func (theme *Theme) BgHighlight() string   { return theme.UI.Highlight.Bg() }
-func (theme *Theme) BgPopup() string       { return theme.UI.BgPopup.Bg() }
-func (theme *Theme) BgSelected() string    { return theme.UI.BgSelected.Bg() }
-func (theme *Theme) BgSubtleBrand() string { return theme.UI.BgSubtleBrand.Bg() }
-func (theme *Theme) BgSubtleHigh() string  { return theme.UI.BgSubtleHigh.Bg() }
-func (theme *Theme) FgDim() string         { return theme.UI.FgDim.Fg() }
-func (theme *Theme) FgBorder() string      { return theme.UI.FgBorder.Fg() }
-func (theme *Theme) FgSearchBox() string   { return theme.UI.FgSearchBox.Fg() }
+func (theme *Theme) FgBrand() string { return theme.UI.Brand.Fg() }
 
+/*
+FgHighlight returns the ANSI foreground escape for the highlight color.
+*/
+func (theme *Theme) FgHighlight() string { return theme.UI.Highlight.Fg() }
+
+/*
+BgBrand returns the ANSI background escape for the brand color.
+*/
+func (theme *Theme) BgBrand() string { return theme.UI.Brand.Bg() }
+
+/*
+BgHighlight returns the ANSI background escape for the highlight color.
+*/
+func (theme *Theme) BgHighlight() string { return theme.UI.Highlight.Bg() }
+
+/*
+BgPopup returns the ANSI background escape for popup dialogs.
+*/
+func (theme *Theme) BgPopup() string { return theme.UI.BgPopup.Bg() }
+
+/*
+BgSelected returns the ANSI background escape for selected items.
+*/
+func (theme *Theme) BgSelected() string { return theme.UI.BgSelected.Bg() }
+
+/*
+BgSubtleBrand returns the ANSI background for subtle brand accents.
+*/
+func (theme *Theme) BgSubtleBrand() string { return theme.UI.BgSubtleBrand.Bg() }
+
+/*
+BgSubtleHigh returns the ANSI background for subtle highlight accents.
+*/
+func (theme *Theme) BgSubtleHigh() string { return theme.UI.BgSubtleHigh.Bg() }
+
+/*
+FgDim returns the ANSI foreground for dimmed text.
+*/
+func (theme *Theme) FgDim() string { return theme.UI.FgDim.Fg() }
+
+/*
+FgBorder returns the ANSI foreground for border lines.
+*/
+func (theme *Theme) FgBorder() string { return theme.UI.FgBorder.Fg() }
+
+/*
+FgSearchBox returns the ANSI foreground for the search box.
+*/
+func (theme *Theme) FgSearchBox() string { return theme.UI.FgSearchBox.Fg() }
+
+/*
+SyntaxKeyword returns the ANSI foreground for syntax keywords.
+*/
 func (theme *Theme) SyntaxKeyword() string { return theme.Syntax.Keyword.Fg() }
+
+/*
+SyntaxBuiltin returns the ANSI foreground for built-in types.
+*/
 func (theme *Theme) SyntaxBuiltin() string { return theme.Syntax.Builtin.Fg() }
-func (theme *Theme) SyntaxString() string  { return theme.Syntax.String.Fg() }
-func (theme *Theme) SyntaxNumber() string  { return theme.Syntax.Number.Fg() }
+
+/*
+SyntaxString returns the ANSI foreground for string literals.
+*/
+func (theme *Theme) SyntaxString() string { return theme.Syntax.String.Fg() }
+
+/*
+SyntaxNumber returns the ANSI foreground for numeric literals.
+*/
+func (theme *Theme) SyntaxNumber() string { return theme.Syntax.Number.Fg() }
+
+/*
+SyntaxComment returns the ANSI foreground for comments.
+*/
 func (theme *Theme) SyntaxComment() string { return theme.Syntax.Comment.Fg() }
+
+/*
+SyntaxLiteral returns the ANSI foreground for literal values.
+*/
 func (theme *Theme) SyntaxLiteral() string { return theme.Syntax.Literal.Fg() }

@@ -162,6 +162,9 @@ func (picker *Picker) RoleName() string {
 	return roleNames[picker.cursor]
 }
 
+/*
+colorPtr returns a pointer to the selected role's color for in-place channel editing.
+*/
 func (picker *Picker) colorPtr() *Color {
 	switch ColorRole(picker.cursor) {
 	case RoleUIBrand:

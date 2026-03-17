@@ -119,6 +119,10 @@ func (kanban *Kanban) DeveloperTasks(maxTasks int) []string {
 	return tasks
 }
 
+/*
+storyID formats a stable identifier for a story within an epic.
+Uses 1-based indices to avoid zero values.
+*/
 func storyID(epic, story int) string {
 	if epic <= 0 {
 		epic = 1

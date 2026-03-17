@@ -117,6 +117,10 @@ func (app *App) Close() error {
 	return app.renderer.Close()
 }
 
+/*
+pump drives one round of Keyboard → Editor → Renderer.
+Copies events through the pipeline, checks for Quit, and buffers ANSI output for Read.
+*/
 func (app *App) pump() {
 	io.Copy(app.editor, app.keyboard)
 

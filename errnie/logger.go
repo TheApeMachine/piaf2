@@ -10,15 +10,24 @@ import (
 
 var logger *Logger
 
-func init() {
-	logger = New()
-}
-
+/*
+Logger wraps charmbracelet/log with stderr and optional file output.
+*/
 type Logger struct {
 	handle      log.Logger
 	traceHandle log.Logger
 }
 
+/*
+init sets the package-level logger at startup.
+*/
+func init() {
+	logger = New()
+}
+
+/*
+New creates a Logger that writes to stderr, and to piaf.log in the current directory when possible.
+*/
 func New() *Logger {
 	var out io.Writer = os.Stderr
 
@@ -65,14 +74,24 @@ func New() *Logger {
 	return logger
 }
 
+/*
+Info logs an info message and key-value pairs to the logger.
+*/
 func Info(msg string, keyvals ...any) {
 	logger.handle.Info(msg, keyvals...)
 }
 
+/*
+Trace logs a debug message to the trace handle (file when available).
+*/
 func Trace(msg string, keyvals ...any) {
 	logger.traceHandle.Debug(msg, keyvals...)
 }
 
+/*
+Error logs the error and returns it unchanged.
+Skips logging when err is nil.
+*/
 func Error(err error, keyvals ...any) error {
 	if err == nil {
 		return nil
@@ -83,14 +102,23 @@ func Error(err error, keyvals ...any) error {
 	return err
 }
 
+/*
+Warn logs a warning message.
+*/
 func Warn(msg string) {
 	logger.handle.Warn(msg)
 }
 
+/*
+Debug logs a debug message and key-value pairs.
+*/
 func Debug(msg string, keyvals ...any) {
 	logger.handle.Debug(msg, keyvals...)
 }
 
+/*
+SetLevel changes the logger's minimum output level.
+*/
 func SetLevel(level log.Level) {
 	logger.handle.SetLevel(level)
 }
