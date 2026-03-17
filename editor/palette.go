@@ -63,6 +63,9 @@ func NewPalette(opts ...paletteOpts) *Palette {
 	return palette
 }
 
+/*
+paletteCommands returns the built-in command palette entries.
+*/
 func paletteCommands() []paletteItem {
 	return []paletteItem{
 		{kind: paletteKindCommand, label: "chat – open AI chat", value: "chat"},
@@ -162,6 +165,10 @@ func (palette *Palette) Backspace() {
 	}
 }
 
+/*
+refresh rebuilds results from commands, file search, and content search.
+Filters by query and clamps the cursor.
+*/
 func (palette *Palette) refresh() {
 	needle := strings.ToLower(string(palette.query))
 
@@ -187,6 +194,10 @@ func (palette *Palette) refresh() {
 	}
 }
 
+/*
+searchFiles walks the root directory and returns file/dir items matching the needle.
+Skips .git, node_modules, vendor. Limited by maxFiles.
+*/
 func (palette *Palette) searchFiles(needle string) []paletteItem {
 	root, err := filepath.Abs(palette.root)
 	if err != nil {
@@ -238,6 +249,10 @@ func (palette *Palette) searchFiles(needle string) []paletteItem {
 	return items
 }
 
+/*
+searchContent greps text files for the needle and returns line-level matches.
+Skips binaries and large files; limited by maxContent.
+*/
 func (palette *Palette) searchContent(needle string) []paletteItem {
 	if needle == "" || len(needle) < 2 {
 		return nil
@@ -319,6 +334,10 @@ func (palette *Palette) searchContent(needle string) []paletteItem {
 	return items
 }
 
+/*
+utf8Valid returns true if the bytes contain no control characters besides tab and newline.
+Used to avoid searching binary files.
+*/
 func utf8Valid(b []byte) bool {
 	for index := 0; index < len(b); index++ {
 		if b[index] < 0x20 && b[index] != '\t' && b[index] != '\n' && b[index] != '\r' {
@@ -329,6 +348,9 @@ func utf8Valid(b []byte) bool {
 	return true
 }
 
+/*
+itoa converts a positive int to a decimal string without allocation.
+*/
 func itoa(n int) string {
 	if n <= 0 {
 		return "0"

@@ -65,6 +65,9 @@ func (workflow *Workflow) Begin(history []string) {
 	}
 }
 
+/*
+SaveKanban writes the kanban to .piaf/kanban.json in the workflow root.
+*/
 func (workflow *Workflow) SaveKanban() {
 	if workflow.kanban == nil || workflow.root == "" {
 		return
@@ -79,6 +82,9 @@ func (workflow *Workflow) SaveKanban() {
 	}
 }
 
+/*
+LoadKanban reads .piaf/kanban.json and populates the workflow kanban and board.
+*/
 func (workflow *Workflow) LoadKanban() {
 	if workflow.root == "" {
 		return
@@ -263,6 +269,9 @@ func (workflow *Workflow) Queue() *team.Queue {
 	return workflow.queue
 }
 
+/*
+lastUserMessage finds the most recent "You: ..." line in the history.
+*/
 func lastUserMessage(history []string) string {
 	for index := len(history) - 1; index >= 0; index-- {
 		line := strings.TrimSpace(history[index])
@@ -452,6 +461,9 @@ type memoryState struct {
 	Agents map[string][]string `json:"agents"`
 }
 
+/*
+Save writes shared and agent memories to .piaf/memory.json.
+*/
 func (memory *AgentMemory) Save() {
 	if memory.root == "" {
 		return
@@ -471,6 +483,9 @@ func (memory *AgentMemory) Save() {
 	}
 }
 
+/*
+Load reads .piaf/memory.json and populates shared and agent memories.
+*/
 func (memory *AgentMemory) Load() {
 	if memory.root == "" {
 		return

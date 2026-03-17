@@ -400,6 +400,9 @@ func (chat *Chat) ScrollOffset() int {
 	return chat.scrollOffset
 }
 
+/*
+randomizedModels returns a shuffled copy of providers for round-robin ordering.
+*/
 func (chat *Chat) randomizedModels() []provider.Provider {
 	models := append([]provider.Provider(nil), chat.providers...)
 
@@ -410,6 +413,9 @@ func (chat *Chat) randomizedModels() []provider.Provider {
 	return models
 }
 
+/*
+toolOutput parses a user message for action verbs (browse, read, remember, etc.) and runs the matching tool.
+*/
 func (chat *Chat) toolOutput(message string) string {
 	fields := strings.Fields(message)
 	if len(fields) == 0 {
@@ -438,23 +444,53 @@ func (chat *Chat) toolOutput(message string) string {
 	}
 }
 
+/*
+chatToolBackend adapts Chat to the DiscussionToolBackend interface for provider tool execution.
+*/
 type chatToolBackend struct {
 	chat *Chat
 }
 
+/*
+Browse delegates to Chat.browse for workspace directory listing.
+*/
 func (backend *chatToolBackend) Browse(path string) string { return backend.chat.browse(path) }
+
+/*
+Read delegates to Chat.read for file content.
+*/
 func (backend *chatToolBackend) Read(path string, start, end int) string {
 	return backend.chat.read(path, start, end)
 }
+
+/*
+Remember delegates to Chat.remember for storing team memory.
+*/
 func (backend *chatToolBackend) Remember(content string) string {
 	return backend.chat.remember(content)
 }
+
+/*
+Recall delegates to Chat.recall for searching team memory.
+*/
 func (backend *chatToolBackend) Recall(filter string) string { return backend.chat.recall(filter) }
+
+/*
+Forget delegates to Chat.forget for removing team memory.
+*/
 func (backend *chatToolBackend) Forget(filter string) string { return backend.chat.forget(filter) }
+
+/*
+Search delegates to Chat.search for workspace content search.
+*/
 func (backend *chatToolBackend) Search(query, target string) string {
 	return backend.chat.search(query, target)
 }
 
+/*
+submitDiscussion runs providers in shuffled order with shared transcript and tools.
+Each agent sees prior responses; tools are limited per turn.
+*/
 func (chat *Chat) submitDiscussion(message string) {
 	order := chat.randomizedModels()
 	baseToolOutput := chat.toolOutput(message)
@@ -503,6 +539,10 @@ func (chat *Chat) submitDiscussion(message string) {
 	}
 }
 
+/*
+submitImplementation runs the PM → Architect → Developers → QA pipeline.
+Orchestrates stage requests, tool execution, and kanban updates.
+*/
 func (chat *Chat) submitImplementation(message string) {
 	if chat.workflow == nil {
 		chat.workflow = NewWorkflow(chat.root)

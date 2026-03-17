@@ -33,6 +33,9 @@ func (explorer *Explorer) Refresh() {
 	explorer.refresh()
 }
 
+/*
+refresh rebuilds the directory listing and sorts entries.
+*/
 func (explorer *Explorer) refresh() {
 	dir := explorer.path
 	if dir == "" || dir == "." {

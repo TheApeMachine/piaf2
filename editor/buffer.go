@@ -253,6 +253,9 @@ func (buf *Buffer) StringLines() []string {
 	return result
 }
 
+/*
+clampCol ensures the cursor column stays within the current line length.
+*/
 func (buf *Buffer) clampCol() {
 	if lineLen := len(buf.lines[buf.cursorRow]); buf.cursorCol > lineLen {
 		buf.cursorCol = lineLen
@@ -261,6 +264,7 @@ func (buf *Buffer) clampCol() {
 
 /*
 Read implements the io.Reader interface.
+Buffer does not support reading; returns EOF.
 */
 func (buf *Buffer) Read(p []byte) (n int, err error) {
 	return 0, io.EOF
@@ -288,6 +292,7 @@ func (buf *Buffer) Write(p []byte) (n int, err error) {
 
 /*
 Close implements the io.Closer interface.
+Buffer has no resources to release.
 */
 func (buf *Buffer) Close() error {
 	return nil
