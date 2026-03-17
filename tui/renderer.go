@@ -59,7 +59,7 @@ type Renderer struct {
 }
 
 /*
-NewRenderer creates a new Renderer instance.
+NewRenderer creates a Renderer that converts Frame wire format to ANSI output.
 */
 func NewRenderer() *Renderer {
 	return &Renderer{}
@@ -248,6 +248,10 @@ func (renderer *Renderer) Close() error {
 	return nil
 }
 
+/*
+cachedStatusBar returns a cached status line when mode and width match.
+Otherwise computes the styled bar and stores it for reuse.
+*/
 func (renderer *Renderer) cachedStatusBar(mode string, width int) string {
 	if mode == renderer.statusMode && width == renderer.statusWidth {
 		return renderer.statusLine
@@ -260,6 +264,9 @@ func (renderer *Renderer) cachedStatusBar(mode string, width int) string {
 	return renderer.statusLine
 }
 
+/*
+storeFrame saves the current frame state for incremental diff on the next Write.
+*/
 func (renderer *Renderer) storeFrame(lines []string, statusLine string, width, height int) {
 	if cap(renderer.lastLines) < len(lines) {
 		renderer.lastLines = make([]string, len(lines))
@@ -273,6 +280,9 @@ func (renderer *Renderer) storeFrame(lines []string, statusLine string, width, h
 	renderer.lastHeight = height
 }
 
+/*
+appendCursorPos appends the ANSI Cursor Position sequence (row;colH) to dst.
+*/
 func appendCursorPos(dst []byte, row, col int) []byte {
 	dst = append(dst, '\033', '[')
 	dst = strconv.AppendInt(dst, int64(row), 10)
@@ -283,6 +293,10 @@ func appendCursorPos(dst []byte, row, col int) []byte {
 	return dst
 }
 
+/*
+styledStatusBar builds the status line with mode pill and piaf label.
+Pads to fill the given width.
+*/
 func styledStatusBar(mode string, width int) string {
 	pill := styledModePill(mode)
 	pillLength := len(mode) + 2
@@ -298,6 +312,9 @@ func styledStatusBar(mode string, width int) string {
 	return pill + strings.Repeat(" ", gap) + label
 }
 
+/*
+styledModePill returns the ANSI-styled mode label (NORMAL, INSERT, etc.).
+*/
 func styledModePill(mode string) string {
 	content := " " + mode + " "
 

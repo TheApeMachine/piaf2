@@ -76,15 +76,22 @@ func (intro *Intro) Write(p []byte) (n int, err error) {
 
 /*
 Close implements the io.Closer interface.
+Intro has no resources to release.
 */
 func (intro *Intro) Close() error {
 	return nil
 }
 
+/*
+introLerp interpolates between a and b by t (0..1).
+*/
 func introLerp(a, b int, t float64) int {
 	return a + int(float64(b-a)*t)
 }
 
+/*
+introClamp clamps v to the range [lo, hi].
+*/
 func introClamp(v, lo, hi int) int {
 	if v < lo {
 		return lo
@@ -97,6 +104,10 @@ func introClamp(v, lo, hi int) int {
 	return v
 }
 
+/*
+generateFrames precomputes all animation frames for the splash sequence.
+Includes gradient sweep, particle trails, and rainbow hold.
+*/
 func (intro *Intro) generateFrames() {
 	if intro.width < 20 || intro.height < 8 {
 		return

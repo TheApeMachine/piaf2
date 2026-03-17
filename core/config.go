@@ -14,10 +14,7 @@ var Embedded embed.FS
 var Cfg *Config
 
 /*
-Config holds AI persona prompts and other settings loaded from config.yml.
-*/
-/*
-PersonaConfig holds a single persona's configuration.
+PersonaConfig holds a single persona's model, system prompt, and base URL.
 */
 type PersonaConfig struct {
 	System  string `yaml:"system"`
@@ -25,6 +22,9 @@ type PersonaConfig struct {
 	BaseURL string `yaml:"baseURL"`
 }
 
+/*
+Config holds AI persona prompts and other settings loaded from config.yml.
+*/
 type Config struct {
 	AI struct {
 		Thinkcursion struct {

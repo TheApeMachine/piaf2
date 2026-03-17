@@ -68,7 +68,8 @@ func InputMuxWithQuit(quit io.Reader) inputMuxOpts {
 }
 
 /*
-NewInputMux creates an InputMux.
+NewInputMux creates an InputMux that multiplexes stdin and a refresh channel.
+Apply options to set stdin, refresh, and quit sources.
 */
 func NewInputMux(opts ...inputMuxOpts) *InputMux {
 	mux := &InputMux{
@@ -82,6 +83,10 @@ func NewInputMux(opts ...inputMuxOpts) *InputMux {
 	return mux
 }
 
+/*
+init starts goroutines that read from stdin and the quit pipe.
+Called once via sync.Once when Read is first invoked.
+*/
 func (mux *InputMux) init() {
 	if mux.stdin != nil {
 		mux.stdinCh = make(chan []byte)
@@ -163,6 +168,7 @@ return len(p), nil
 
 /*
 Close implements io.Closer.
+InputMux has no resources to release.
 */
 func (mux *InputMux) Close() error {
 return nil

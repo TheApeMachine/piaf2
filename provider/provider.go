@@ -152,11 +152,17 @@ func BuildUserPrompt(request *Request) string {
 	return strings.Join(lines, "\n")
 }
 
+/*
+retryProvider wraps a Provider with exponential backoff on transient errors.
+*/
 type retryProvider struct {
 	base     Provider
 	attempts int
 }
 
+/*
+WithRetry wraps a Provider to retry failed requests with exponential backoff.
+*/
 func WithRetry(base Provider, attempts int) Provider {
 	return &retryProvider{
 		base:     base,
@@ -164,8 +170,14 @@ func WithRetry(base Provider, attempts int) Provider {
 	}
 }
 
+/*
+Name delegates to the wrapped provider.
+*/
 func (r *retryProvider) Name() string { return r.base.Name() }
 
+/*
+Generate retries the base provider up to attempts times with exponential backoff.
+*/
 func (r *retryProvider) Generate(ctx context.Context, request *Request) (response string, err error) {
 	for i := 0; i < r.attempts; i++ {
 		response, err = r.base.Generate(ctx, request)
@@ -185,6 +197,9 @@ func (r *retryProvider) Generate(ctx context.Context, request *Request) (respons
 	return response, err
 }
 
+/*
+GenerateStream retries the base provider's stream up to attempts times with exponential backoff.
+*/
 func (r *retryProvider) GenerateStream(ctx context.Context, request *Request, onChunk func(string)) (response string, err error) {
 	for i := 0; i < r.attempts; i++ {
 		response, err = r.base.GenerateStream(ctx, request, onChunk)
